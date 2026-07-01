@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flag Machine - Race Officer Control Panel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <header class="global-control-panel">
+        <div class="branding">
+            <h1>⚓ FLAG MACHINE</h1>
+            <span class="version-tag">v1.0 Demo Dashboard</span>
+        </div>
+        
+        <div class="control-actions">
+            <div class="input-group">
+                <label for="master-start-input">Master Start Time:</label>
+                <input type="time" id="master-start-input" value="{{ state.master_start_time }}">
+            </div>
+            
+            <button id="btn-start" class="btn btn-green">⚡ Start</button>
+            <button id="btn-stop" class="btn btn-red">🛑 Override Stop</button>
+            <button id="btn-reset" class="btn btn-gray">🔄 Override Reset</button>
+        </div>
+
+        <div class="system-clock-box">
+            <div class="clock-label">SYSTEM TIME</div>
+            <div id="live-system-clock">00:00:00</div>
+        </div>
+    </header>
+
+    <main class="workspace-container">
+        
+        <aside class="sidebar-library">
+            <h2>📋 Asset Palette</h2>
+            <p class="instruction-text">Drag items out into the Event Grid sequence list below:</p>
+            <div class="library-scroller">
+                {% for asset in library %}
+                <div class="library-card" draggable="true" 
+                     data-label="{{ asset.label }}" 
+                     data-flag="{{ asset.flag_image }}" 
+                     data-minutes="{{ asset.default_minutes }}">
+                    <div class="library-drag-handle">☰</div>
+                    <div class="library-flag-frame">
+                        <span class="flag-placeholder-icon">🏁</span>
+                    </div>
+                    <div class="library-meta">
+                        <div class="asset-name">{{ asset.label }}</div>
+                        <div class="asset-default-time">{{ asset.default_minutes }} Min</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <section class="event-sequence-pane">
+            <div class="pane-header">
+                <h2>⏱️ Event Grid Waterfall Cascade</h2>
+                <div id="global-status-badge" class="badge status-ready">STATE: READY</div>
+            </div>
+            
+            <div id="event-grid-dropzone" class="event-grid-container">
+                {% for card in state.sequence %}
+                <div class="event-row state-pending" id="{{ card.id }}" draggable="true">
+                    <div class="drag-handle">☰</div>
+                    
+                    <div class="flag-preview-box">
+                        <span class="flag-icon">🏁</span>
+                        <small class="flag-filename-label">{{ card.flag_image }}</small>
+                    </div>
+                    
+                    <div class="class-details">
+                        <span class="class-label">{{ card.label }}</span>
+                        <span class="status-badge">PENDING</span>
+                    </div>
+                    
+                    <div class="timer-display-container">
+                        <div class="duration-input-wrapper">
+                            <input type="number" class="minutes-editor" min="1" max="60" value="{{ card.countdown_minutes }}">
+                            <span class="unit-text">Min</span>
+                        </div>
+                        <div class="live-countdown-clock hidden">00:00</div>
+                    </div>
+                    
+                    <button class="btn-remove-card" title="Remove from sequence">×</button>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

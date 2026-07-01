@@ -1,0 +1,23 @@
+======================================================================
+NEXT SESSION START INFO: REGATTA SEQUENCE PLANNER ("FLAG MACHINE")
+
+1. CURRENT STATUS:
+   - Successfully refactored from a Kanban structure to a sequential row planner.
+   - Verified that app.py data stores can read specific boat classes (Ilca 6, Starling, P Class, Optimist) and flag file attachments.
+   - Interactive UI can drag rows vertically to sort them, and users can adjust duration values via standard input boxes.
+   - Endpoints (/update-sequence and /update-settings) process layout order updates instantly.
+
+2. ENVIRONMENT DETAILS (CRITICAL):
+   - Machine: Windows 11
+   - Path Shortcuts: Broken/Not in Path (pip / python commands fail by themselves).
+   - Real Python Path: C:\Users\anton\miniconda3\python.exe (Anaconda Base Environment)
+   - Working Directory: C:\Users\\anton\flagmachine\drag-drop-app
+
+3. WORKING CLI COMMANDS TO RUN APP:
+   cd C:\Users\anton\flagmachine\drag-drop-app
+   C:\Users\anton\miniconda3\python.exe app.py
+
+4. ROADMAP OPTIONS FOR NEXT STEP:
+   - Next Phase: Implement the Live Countdown Engine.
+   - Task Details: Build the JavaScript timing loop that reads the master start time, calculates the actual live race countdowns, changes row styling based on status, and auto-daisy-chains down the list as each countdown hits zero.
+======================================================================
