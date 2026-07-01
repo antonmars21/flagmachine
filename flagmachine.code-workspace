@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "flag-machine",
+			"path": "flag-machine"
+		}
+	],
+	"settings": {}
+}
