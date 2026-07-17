@@ -166,7 +166,7 @@
                     flagContainer.innerHTML = `<img src="${flagUrl}" alt="Race Flag">`;
                 }
             } else {
-                flagContainer.innerHTML = '<span class="no-flag-placeholder">NO FLAG</span>';
+                flagContainer.innerHTML = `<span style="color: #555; font-size: 1.5rem;">NO FLAG</span>`;
             }
 
             // Update Timer (Numbers Only)

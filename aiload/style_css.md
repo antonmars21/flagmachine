@@ -246,18 +246,6 @@ body {
     100% { box-shadow: 0 0 50px rgba(16, 185, 129, 0.8); }
 }
 
-#display-class-timer.go { 
-    background-color: var(--go-bg); 
-    border-color: var(--go-text); 
-    color: var(--go-text); 
-    box-shadow: 0 0 50px rgba(16, 185, 129, 0.6); 
-}
-
-.no-flag-placeholder {
-    color: #555;
-    font-size: 1.5rem;
-    font-weight: bold;
-}
 
 .badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
 .status-ready { background-color: #1e3a8a; color: #93c5fd; }

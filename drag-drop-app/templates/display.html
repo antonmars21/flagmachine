@@ -1,13 +1,19 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event Grid 1 - Outdoor Display</title>
+    <title></title>
     <style>
+        /* --- CSS STYLES --- */
         :root {
             --bg-dark: #000000;
             --text-white: #ffffff;
+            --timer-bg: #1e293b;
+            --timer-text: #ef4444; /* Red for urgency */
+            --go-bg: #10b981;      /* Green for GO */
+            --go-text: #ffffff;
             --border-color: #334155;
         }
 
@@ -47,7 +53,7 @@
             text-transform: uppercase;
             font-weight: bold;
         }
-        .status-running { background-color: #10b981; color: white; }
+        .status-running { background-color: var(--go-bg); color: white; }
         .status-standby { background-color: #555; color: #ccc; }
 
         /* Main Display Area */
@@ -60,50 +66,50 @@
             padding: 40px;
         }
 
-        /* Flag Container (Kept for context) */
+        /* Flag Container 
         #display-flag-container {
             width: 400px;
             height: 400px;
             background-color: #1a1a1a;
-            border: 4px solid var(--border-color);
-            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 102px;
             display: flex;
             justify-content: center;
             align-items: center;
             overflow: hidden;
         }
-
+    */
         #display-flag-container img {
             width: 100%;
             height: 100%;
             object-fit: contain;
         }
 
-        /* --- TIMER STYLES (UPDATED) --- */
+        /* Timer Container 
         #display-class-timer {
-            /* No background, no border, no box-shadow */
-            background-color: transparent;
-            border: none;
-            box-shadow: none;
-            
-            /* Typography */
-            font-family: 'Courier New', monospace; /* Monospace for stable width */
-            font-size: 12rem; /* Extremely large */
-            font-weight: 900;
-            color: #ffffff; /* Pure White */
-            
-            /* Layout */
+            width: 300px;
+            height: 300px;
+            background-color: var(--timer-bg);
+            border: 1px solid var(--timer-text);
+           border-radius: 1px; 
             display: flex;
             justify-content: center;
             align-items: center;
-            height: auto;
-            width: auto;
-            
-            /* Remove any padding that might look like a box */
-            padding: 0;
-            margin: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 8rem;
+            font-weight: 900;
+            color: var(--timer-text);
+            box-shadow: 0 0 30px rgb(5, 5, 5);
         }
-
+    */
+        /* GO State Override 
+        #display-class-timer.go {
+            background-color: var(--go-bg);
+            border-color: var(--go-text);
+            color: var(--go-text);
+            box-shadow: 0 0 50px rgba(16, 185, 129, 0.6);
+        }
+*/
         /* Hidden State */
         .hidden { display: none !important; }
     </style>
@@ -111,7 +117,7 @@
 <body>
 
     <div class="header">
-        <div class="grid-name" id="display-grid-name">Event Grid 1</div>
+        <div class="grid-name" id="display-grid-name"></div>
         <div class="status-badge" id="display-status">STANDBY</div>
     </div>
 
@@ -121,11 +127,12 @@
             <span style="color: #555; font-size: 1.5rem;">NO FLAG</span>
         </div>
 
-        <!-- Countdown Timer (Numbers Only) -->
-        <div id="display-class-timer">--</div>
+        <!-- Countdown Timer -->
+        <div id="display-class-timer">--:--</div>
     </div>
 
     <script>
+        /* --- JAVASCRIPT LOGIC --- */
         const API_ENDPOINT = '/api/display-state';
         const POLL_INTERVAL_MS = 500; 
 
@@ -166,20 +173,18 @@
                     flagContainer.innerHTML = `<img src="${flagUrl}" alt="Race Flag">`;
                 }
             } else {
-                flagContainer.innerHTML = '<span class="no-flag-placeholder">NO FLAG</span>';
+                flagContainer.innerHTML = `<span style="color: #555; font-size: 1.5rem;">NO FLAG</span>`;
             }
 
-            // Update Timer (Numbers Only)
+            // Update Timer
             const timerValue = data.live_timer;
             
-            if (timerValue === "GO" || timerValue === "0" || timerValue === "00") {
+            if (timerValue === "GO" || timerValue === "00:00") {
                 timerEl.innerText = "GO";
-                // Optional: You can add a class here if you want "GO" to blink
-                // timerEl.classList.add('go'); 
+                timerEl.classList.add('go');
             } else {
-                // Just display the number (e.g., "4", "3", "2", "1")
                 timerEl.innerText = timerValue;
-                // timerEl.classList.remove('go');
+                timerEl.classList.remove('go');
             }
         }
 
