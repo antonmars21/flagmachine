@@ -12,6 +12,7 @@
         <div class="branding">
             <h1>⚓ FLAG MACHINE</h1>
             <span class="version-tag">v1.0 Demo Dashboard</span>
+            <a href="/finishsheet" style="margin-left: 30px; padding: 8px 16px; background-color: #10b981; color: white; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px;">📊 Finish Sheet</a>
         </div>
         
         <div class="control-actions">
@@ -35,7 +36,17 @@
             <div class="clock-label">TIME</div>
             <div id="live-system-clock">00:00:00</div>
         </div>
+        
+        <div id="global-status-badge" class="badge status-ready" style="margin-left: auto; align-self: center;">STATE: READY</div>
     </header>
+
+    <!-- Display Mode Selector (Below Header) -->
+    <div class="display-mode-bar">
+        <span class="display-mode-label">Display Mode:</span>
+        <button id="btn-mode-flags" class="btn btn-mode active">🚩 Flags</button>
+        <button id="btn-mode-both" class="btn btn-mode">🎬 Both</button>
+        <button id="btn-mode-number" class="btn btn-mode">#️⃣ Timer</button>
+    </div>
 
     <main class="workspace-container">
         
@@ -73,14 +84,13 @@
         <section class="event-sequence-pane">
             <div class="pane-header">
                 <h2>⏱️ Start Sequence</h2>
-                <div id="global-status-badge" class="badge status-ready">STATE: READY</div>
             </div>
 
             <div id="event-grids-container">
                 
                 <div class="event-grid grid-primary" data-grid-index="1" id="event-grid-1">
                     <div class="event-grid-header">
-                        <h3>Boat Class 1</h3>
+                        <h3>Start 1</h3>
                         <div class="grid-meta">
                             <span class="grid-countdown-label">Total Countdown: </span>
                             <span class="grid-timer" id="timer-grid-1">00:00</span>
@@ -91,7 +101,7 @@
 
                 <div class="event-grid grid-secondary" data-grid-index="2" id="event-grid-2">
                     <div class="event-grid-header">
-                        <h3>Boat Class 2</h3>
+                        <h3>Start 2</h3>
                         <div class="grid-meta">
                             <span class="grid-countdown-label">Total Countdown: </span>
                             <span class="grid-timer" id="timer-grid-2">00:00</span>

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finish Sheet - Race Scoring</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/registry.css') }}">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ========== TOP BANNER ========== */
+        .banner {
+            background-color: #1e2640;
+            padding: 15px 25px;
+            border-bottom: 3px solid #0f172a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .banner-left h1 {
+            font-size: 22px;
+            letter-spacing: 2px;
+        }
+
+        .banner-center {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .time-box {
+            text-align: center;
+            background: #0f172a;
+            padding: 8px 15px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+        }
+
+        .time-label {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .time-value {
+            font-size: 20px;
+            font-weight: bold;
+            font-family: monospace;
+            color: #f59e0b;
+        }
+
+        .banner-right {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.1s;
+        }
+
+        .btn:active { transform: scale(0.97); }
+        .btn-start { background-color: #10b981; color: #fff; }
+        .btn-end { background-color: #ef4444; color: #fff; }
+        .btn-export { background-color: #0369a1; color: #fff; }
+        .btn:disabled { cursor: not-allowed; opacity: 0.5; }
+
+        .btn-nav {
+            background-color: #334155;
+            color: #fff;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .btn-registry {
+            background-color: #3b82f6;
+            color: #fff;
+        }
+
+        /* ========== MAIN CONTENT ========== */
+        .container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .columns-wrapper {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        /* ========== COLUMN ========== */
+        .column {
+            background-color: #121824;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .column-header {
+            background-color: #1e2640;
+            padding: 15px;
+            border-bottom: 2px solid #334155;
+            text-align: center;
+        }
+
+        .column-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #f8fafc;
+            margin-bottom: 5px;
+        }
+
+        .column-count {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .sailors-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+        }
+
+        /* ========== SAILOR CARD ========== */
+        .sailor-card {
+            background-color: #1a2332;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: grab;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .sailor-card:hover {
+            background-color: #223347;
+            border-color: #475569;
+            transform: translateY(-2px);
+        }
+
+        .sailor-card.finished {
+            background-color: #064e3b;
+            border-color: #10b981;
+            opacity: 0.8;
+        }
+        
+        .sailor-card.class-started {
+            border: 4px solid #f59e0b;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+        }
+
+        .sailor-card.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        .sailor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 8px;
+        }
+
+        .sail-number {
+            font-size: 20px;
+            font-weight: bold;
+            color: #f59e0b;
+        }
+
+        .sailor-class {
+            font-size: 12px;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .sailor-nickname {
+            font-size: 13px;
+            color: #cbd5e1;
+            margin-bottom: 8px;
+        }
+
+        .sailor-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .lap-counter {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .lap-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #10b981;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        .btn-lap {
+            padding: 6px 12px;
+            background-color: #0369a1;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .btn-lap:hover {
+            background-color: #0284c7;
+        }
+
+        .btn-lap:active {
+            transform: scale(0.95);
+        }
+
+        .finish-checkbox {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            accent-color: #10b981;
+        }
+
+        .sailor-card.finished .finish-checkbox {
+            accent-color: #6ee7b7;
+        }
+
+        /* ========== SCROLLBAR ========== */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 1600px) {
+            .columns-wrapper {
+                gap: 10px;
+                padding: 15px;
+            }
+            
+            .sailor-card {
+                padding: 10px;
+            }
+            
+            .sail-number {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TOP BANNER -->
+    <div class="banner">
+        <div class="banner-left" style="display: flex; align-items: center; gap: 20px;">
+            <h1>⚓ FINISH SHEET</h1>
+            <a href="/" class="btn btn-nav">← Race Officer Control</a>
+        </div>
+        
+        <div class="banner-center">
+            <div class="time-box">
+                <div class="time-label">Elapsed Time</div>
+                <div class="time-value" id="elapsed-time">00:00</div>
+            </div>
+        </div>
+        
+        <div class="banner-right">
+            <button class="btn btn-registry" id="btn-toggle-registry">👥 Sailor Registry</button>
+            <button class="btn btn-start" id="btn-start-race">▶ Start Race</button>
+            <button class="btn btn-end" id="btn-end-race" disabled>⏹ End Race</button>
+            <button class="btn btn-export" id="btn-export-csv">⬇ Export CSV</button>
+        </div>
+    </div>
+
+    <!-- SAILOR REGISTRY SIDEBAR -->
+    <div class="registry-sidebar" id="registry-sidebar">
+        <div class="registry-sidebar-header">
+            <h2>👥 Sailor Registry</h2>
+            <button class="close-btn" id="btn-close-registry">✕</button>
+        </div>
+        <div class="registry-search">
+            <input type="text" id="registry-search" placeholder="Search sailors...">
+        </div>
+        <div class="registry-list-container">
+            <div id="registry-list"></div>
+        </div>
+        <div class="add-sailor-section">
+            <button class="btn-add-toggle" id="btn-add-toggle">+ Add New Sailor</button>
+            <form class="add-sailor-form hidden" id="add-sailor-form">
+                <div class="form-group"><label>UID</label><input type="text" name="uid" required></div>
+                <div class="form-group"><label>Sailor Name</label><input type="text" name="sailor_name" required></div>
+                <div class="form-group"><label>Short Name</label><input type="text" name="short_name" required></div>
+                <div class="form-group"><label>Sail No</label><input type="text" name="sail_no" required></div>
+                <div class="form-group"><label>Boat Class</label><input type="text" name="boat_class" required></div>
+                <div class="form-group"><label>Handicap</label><input type="number" step="0.01" name="handicap" value="1.0"></div>
+                <div class="form-group"><label>Seed</label><input type="number" name="seed" value="0"></div>
+                <button type="submit" class="btn-submit">Add Sailor</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="container">
+        <div class="columns-wrapper" id="columns-wrapper">
+            <!-- 4 columns will be rendered here by JavaScript -->
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/finishsheet.js') }}"></script>
+</body>
+</html>

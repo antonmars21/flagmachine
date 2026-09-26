@@ -1,152 +1,151 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title></title>
+    <title>Flag Machine - Outdoor Display</title>
     <style>
-        /* --- CSS STYLES --- */
-        :root {
-            --bg-dark: #000000;
-            --text-white: #ffffff;
-            --timer-bg: #1e293b;
-            --timer-text: #ef4444; /* Red for urgency */
-            --go-bg: #10b981;      /* Green for GO */
-            --go-text: #ffffff;
-            --border-color: #334155;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background-color: var(--bg-dark);
-            color: var(--text-white);
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
             height: 100vh;
             display: flex;
-            flex-direction: column;
             overflow: hidden;
         }
 
-        /* Top Bar: Grid Name & Status */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 40px;
-            border-bottom: 2px solid var(--border-color);
-            background-color: #111;
-        }
-
-        .grid-name {
-            font-size: 3rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .status-badge {
-            font-size: 1.5rem;
-            padding: 10px 25px;
-            border-radius: 8px;
-            background-color: #333;
-            text-transform: uppercase;
-            font-weight: bold;
-        }
-        .status-running { background-color: var(--go-bg); color: white; }
-        .status-standby { background-color: #555; color: #ccc; }
-
-        /* Main Display Area */
+        /* 4-CELL GRID LAYOUT */
         .display-container {
             flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 60px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
             padding: 40px;
         }
 
-        /* Flag Container 
-        #display-flag-container {
-            width: 400px;
-            height: 400px;
-            background-color: #1a1a1a;
-            border: 1px solid var(--border-color);
-            border-radius: 102px;
+        /* FLAG CELLS */
+        .flag-cell {
+            background-color: #111;
+            border: 2px solid #333;
+            border-radius: 8px;
             display: flex;
             justify-content: center;
             align-items: center;
             overflow: hidden;
         }
-    */
-        #display-flag-container img {
-            width: 100%;
-            height: 100%;
+
+        .flag-cell img {
+            max-width: 100%;
+            max-height: 100%;
             object-fit: contain;
         }
 
-        /* Timer Container 
-        #display-class-timer {
-            width: 300px;
-            height: 300px;
-            background-color: var(--timer-bg);
-            border: 1px solid var(--timer-text);
-           border-radius: 1px; 
+        .flag-cell.empty {
+            color: #555;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .flag-cell.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* TIMER CELL */
+        .timer-cell {
+            background-color: transparent;
             display: flex;
             justify-content: center;
             align-items: center;
             font-family: 'Courier New', monospace;
-            font-size: 8rem;
+            font-size: 30vw;
             font-weight: 900;
-            color: var(--timer-text);
-            box-shadow: 0 0 30px rgb(5, 5, 5);
+            color: #00ff00;
+            text-shadow: 0 0 30px rgba(0, 255, 0, 0.6);
+            letter-spacing: 20px;
+            line-height: 1;
         }
-    */
-        /* GO State Override 
-        #display-class-timer.go {
-            background-color: var(--go-bg);
-            border-color: var(--go-text);
-            color: var(--go-text);
-            box-shadow: 0 0 50px rgba(16, 185, 129, 0.6);
+
+        .timer-cell.hidden {
+            display: none;
         }
-*/
-        /* Hidden State */
-        .hidden { display: none !important; }
+
+        /* TOGGLE BUTTON */
+        .control-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        .toggle-btn {
+            background-color: #333;
+            color: #fff;
+            border: 2px solid #666;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+            background-color: #555;
+            border-color: #888;
+        }
+
+        .toggle-btn:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <div class="grid-name" id="display-grid-name"></div>
-        <div class="status-badge" id="display-status">STANDBY</div>
-    </div>
-
     <div class="display-container">
-        <!-- Flag Image -->
-        <div id="display-flag-container">
-            <span style="color: #555; font-size: 1.5rem;">NO FLAG</span>
+        <!-- CELL 1: Primary Flag -->
+        <div id="flag-1" class="flag-cell">
+            <span class="empty">NO FLAG</span>
         </div>
 
-        <!-- Countdown Timer -->
-        <div id="display-class-timer">--:--</div>
+        <!-- CELL 2: Secondary Flag (if exists) -->
+        <div id="flag-2" class="flag-cell hidden">
+            <span class="empty">NO FLAG</span>
+        </div>
+
+        <!-- CELL 3: Timer (Total Countdown) -->
+        <div id="timer-display" class="timer-cell">--</div>
+    </div>
+
+    <!-- Toggle Button (hidden, for reference) -->
+    <div class="control-bar" style="display: none;">
+        <button class="toggle-btn" id="toggle-countdown">🔒 HIDE TIMER</button>
     </div>
 
     <script>
-        /* --- JAVASCRIPT LOGIC --- */
         const API_ENDPOINT = '/api/display-state';
-        const POLL_INTERVAL_MS = 500; 
+        const POLL_INTERVAL_MS = 500;
 
-        const gridNameEl = document.getElementById('display-grid-name');
-        const statusEl = document.getElementById('display-status');
-        const flagContainer = document.getElementById('display-flag-container');
-        const timerEl = document.getElementById('display-class-timer');
+        const flag1El = document.getElementById('flag-1');
+        const flag2El = document.getElementById('flag-2');
+        const timerEl = document.getElementById('timer-display');
 
         let lastState = null;
+        let currentMode = 'flags';
 
+        // FETCH & UPDATE DISPLAY
         async function fetchDisplayState() {
             try {
                 const response = await fetch(API_ENDPOINT);
                 const data = await response.json();
+                
+                console.log('Display state received:', data);
 
                 if (JSON.stringify(data) !== JSON.stringify(lastState)) {
                     updateUI(data);
@@ -158,37 +157,56 @@
         }
 
         function updateUI(data) {
-            // Update Status Badge
-            statusEl.innerText = data.status;
-            statusEl.className = `status-badge status-${data.status.toLowerCase()}`;
-
-            // Update Grid Name
-            gridNameEl.innerText = data.grid_name;
-
-            // Update Flag Image
-            if (data.flag_image && data.flag_image !== "") {
-                const flagUrl = `/static/flags/${data.flag_image}`;
-                const currentImg = flagContainer.querySelector('img');
-                if (!currentImg || currentImg.src !== flagUrl) {
-                    flagContainer.innerHTML = `<img src="${flagUrl}" alt="Race Flag">`;
+            console.log('Updating UI with:', data);
+            
+            currentMode = data.display_mode || 'flags';
+            console.log('Display mode:', currentMode);
+            
+            // UPDATE FLAG 1
+            if (currentMode === 'flags' || currentMode === 'both') {
+                if (data.flag_image && data.flag_image !== "") {
+                    const flagUrl = `/static/flags/${data.flag_image}`;
+                    console.log('Loading flag 1:', flagUrl);
+                    flag1El.innerHTML = `<img src="${flagUrl}" alt="Flag 1">`;
+                    flag1El.classList.remove('hidden');
+                } else {
+                    flag1El.innerHTML = '<span class="empty">NO FLAG</span>';
+                    flag1El.classList.remove('hidden');
                 }
             } else {
-                flagContainer.innerHTML = `<span style="color: #555; font-size: 1.5rem;">NO FLAG</span>`;
+                flag1El.classList.add('hidden');
             }
 
-            // Update Timer
-            const timerValue = data.live_timer;
-            
-            if (timerValue === "GO" || timerValue === "00:00") {
-                timerEl.innerText = "GO";
-                timerEl.classList.add('go');
+            // UPDATE FLAG 2 (if secondary flag exists)
+            if ((currentMode === 'flags' || currentMode === 'both') && data.secondary_flag_image && data.secondary_flag_image !== "") {
+                const flag2Url = `/static/flags/${data.secondary_flag_image}`;
+                console.log('Loading flag 2:', flag2Url);
+                flag2El.innerHTML = `<img src="${flag2Url}" alt="Flag 2">`;
+                flag2El.classList.remove('hidden');
             } else {
-                timerEl.innerText = timerValue;
-                timerEl.classList.remove('go');
+                flag2El.classList.add('hidden');
+            }
+
+            // UPDATE TIMER (Total Countdown - whole minutes only)
+            if (currentMode === 'both' || currentMode === 'number') {
+                const timerValue = data.live_timer;
+                console.log('Timer value:', timerValue);
+                
+                if (timerValue === "0" || timerValue === 0) {
+                    timerEl.textContent = "GO";
+                } else if (timerValue && timerValue !== "--") {
+                    timerEl.textContent = timerValue;
+                } else {
+                    timerEl.textContent = "--";
+                }
+                timerEl.classList.remove('hidden');
+            } else {
+                timerEl.classList.add('hidden');
             }
         }
 
-        // Start Polling
+        // START POLLING
+        console.log('Display board started, polling every', POLL_INTERVAL_MS, 'ms');
         setInterval(fetchDisplayState, POLL_INTERVAL_MS);
         fetchDisplayState();
     </script>

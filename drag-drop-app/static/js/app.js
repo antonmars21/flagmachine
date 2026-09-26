@@ -1,364 +1,325 @@
-// static/js/app.js
+// app.js - Fresh build matching current index.html structure
+const state = { isRunning: false, raceStartTime: null, sequence: [], masterStartTime: "11:30" };
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Engine State Selectors
-    const gridDropzone = document.getElementById('event-grid-dropzone');
-    const masterStartInput = document.getElementById('master-start-input');
-    const systemClockEl = document.getElementById('live-system-clock');
-    const globalStatusBadge = document.getElementById('global-status-badge');
-    
-    const btnStart = document.getElementById('btn-start');
-    const btnStop = document.getElementById('btn-stop');
-    const btnReset = document.getElementById('btn-reset');
-
-    // Runtime Control Variables
-    let heartbeatIntervalId = null;
-    let masterStateStatus = "READY"; 
-    let currentRunningRowIndex = -1;
-    let rowTimerRemainingSeconds = 0;
-    let expectedRowEndTimeStamp = 0;
-
-    // ==========================================================================
-    // ⏰ SECTION A: THE TIMING LOOP SYSTEM
-    // ==========================================================================
-    
-    // Constant 1-second system synchronization heart tick
-    setInterval(updateSystemClock, 1000);
-    updateSystemClock();
-
-    function updateSystemClock() {
-        const now = new Date();
-        const hrs = String(now.getHours()).padStart(2, '0');
-        const mins = String(now.getMinutes()).padStart(2, '0');
-        const secs = String(now.getSeconds()).padStart(2, '0');
-        const currentTimeString = `${hrs}:${mins}:${secs}`;
-        
-        systemClockEl.innerText = currentTimeString;
-
-        // Auto-anchor evaluation logic: strikes exactly when HH:MM matches and real-world seconds click 00
-        if (masterStateStatus === "READY") {
-            const targetHHMM = masterStartInput.value;
-            if (`${hrs}:${mins}` === targetHHMM && secs === "00") {
-                console.log(`⏱️ Master anchor hit target time of ${targetHHMM}. Awakening sequence engine.`);
-                startSequenceCascade();
-            }
-        }
-    }
-
-    function startSequenceCascade() {
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        if (rows.length === 0) {
-            alert("Cannot execute an empty event track. Add items out of the library palette first.");
-            return;
-        }
-
-        masterStateStatus = "RUNNING";
-        updateGlobalStatusUI("RUNNING");
-        lockdownUIConfiguration(true);
-
-        // Notify backend service endpoint about current lock state phase
-        postToServer('/update-status', { status: "RUNNING" });
-
-        // Spin up live animation frame thread
-        currentRunningRowIndex = 0;
-        activateRowTimer(currentRunningRowIndex);
-        
-        if (heartbeatIntervalId) clearInterval(heartbeatIntervalId);
-        heartbeatIntervalId = setInterval(tickActiveRowTimer, 200);
-    }
-
-    function activateRowTimer(index) {
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        if (index >= rows.length) {
-            // Sequence completed successfully down the line
-            terminateSequenceComplete();
-            return;
-        }
-
-        currentRunningRowIndex = index;
-        const activeRow = rows[index];
-        
-        // Mutate target structural flags from PENDING style properties over to ACTIVE properties
-        activeRow.className = "event-row state-active";
-        activeRow.querySelector('.status-badge').innerText = "ACTIVE";
-        
-        const inputMinutesEl = activeRow.querySelector('.minutes-editor');
-        const clockDisplayEl = activeRow.querySelector('.live-countdown-clock');
-        
-        // Hide standard planning configurations, reveal running time tracking interface
-        inputMinutesEl.parentElement.classList.add('hidden');
-        clockDisplayEl.classList.remove('hidden');
-
-        // Parse timing durations and cache anchor wall-clock time limit parameters
-        const durationMinutes = parseInt(inputMinutesEl.value) || 1;
-        rowTimerRemainingSeconds = durationMinutes * 60;
-        expectedRowEndTimeStamp = Date.now() + (rowTimerRemainingSeconds * 1000);
-        
-        renderActiveClockDisplay(clockDisplayEl, rowTimerRemainingSeconds);
-    }
-
-    function tickActiveRowTimer() {
-        if (masterStateStatus !== "RUNNING") return;
-
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        const activeRow = rows[currentRunningRowIndex];
-        if (!activeRow) return;
-
-        const clockDisplayEl = activeRow.querySelector('.live-countdown-clock');
-        
-        // Absolute reference timestamp parsing to protect engine drift from standard tab sleeping parameters
-        const deltaMillis = expectedRowEndTimeStamp - Date.now();
-        rowTimerRemainingSeconds = Math.ceil(deltaMillis / 1000);
-
-        if (rowTimerRemainingSeconds <= 0) {
-            // Milestone complete trigger. Retire completed block and cascade to next down array indexes
-            retireCompletedRow(activeRow);
-            currentRunningRowIndex++;
-            activateRowTimer(currentRunningRowIndex);
-        } else {
-            renderActiveClockDisplay(clockDisplayEl, rowTimerRemainingSeconds);
-        }
-    }
-
-    function renderActiveClockDisplay(element, totalSeconds) {
-        const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-        const s = String(totalSeconds % 60).padStart(2, '0');
-        element.innerText = `${m}:${s}`;
-    }
-
-    function retireCompletedRow(rowElement) {
-        rowElement.className = "event-row state-clear";
-        rowElement.querySelector('.status-badge').innerText = "STARTED / CLEAR";
-        const clockDisplayEl = rowElement.querySelector('.live-countdown-clock');
-        clockDisplayEl.innerText = "00:00";
-    }
-
-    function terminateSequenceComplete() {
-        masterStateStatus = "FINISHED";
-        updateGlobalStatusUI("FINISHED");
-        if (heartbeatIntervalId) clearInterval(heartbeatIntervalId);
-        postToServer('/update-status', { status: "FINISHED" });
-    }
-
-    function stopSequenceOverride() {
-        masterStateStatus = "READY";
-        updateGlobalStatusUI("READY");
-        if (heartbeatIntervalId) clearInterval(heartbeatIntervalId);
-        
-        // Re-illuminate and step back down to neutral layouts where execution paused
-        const activeRow = gridDropzone.querySelector('.state-active');
-        if (activeRow) {
-            activeRow.className = "event-row state-pending";
-            activeRow.querySelector('.status-badge').innerText = "PENDING";
-            activeRow.querySelector('.minutes-editor').parentElement.classList.remove('hidden');
-            activeRow.querySelector('.live-countdown-clock').classList.add('hidden');
-        }
-        lockdownUIConfiguration(false);
-        postToServer('/update-status', { status: "READY" });
-    }
-
-    function resetSequenceOverride() {
-        if (heartbeatIntervalId) clearInterval(heartbeatIntervalId);
-        masterStateStatus = "READY";
-        updateGlobalStatusUI("READY");
-        lockdownUIConfiguration(false);
-
-        // Wipe running elements and restore pristine layout fields across all row sets
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        rows.forEach(row => {
-            row.className = "event-row state-pending";
-            row.querySelector('.status-badge').innerText = "PENDING";
-            row.querySelector('.minutes-editor').parentElement.classList.remove('hidden');
-            row.querySelector('.live-countdown-clock').classList.add('hidden');
-        });
-
-        postToServer('/update-status', { status: "READY" });
-        synchronizeSequenceStateToServer();
-    }
-
-    function lockdownUIConfiguration(shouldLock) {
-        masterStartInput.disabled = shouldLock;
-        const inputs = gridDropzone.querySelectorAll('.minutes-editor');
-        inputs.forEach(inp => inp.disabled = shouldLock);
-        
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        rows.forEach(row => {
-            row.setAttribute('draggable', shouldLock ? "false" : "true");
-            const btnDel = row.querySelector('.btn-remove-card');
-            if (btnDel) btnDel.style.display = shouldLock ? "none" : "block";
-        });
-    }
-
-    function updateGlobalStatusUI(status) {
-        globalStatusBadge.innerText = `STATE: ${status}`;
-        globalStatusBadge.className = `badge status-${status.toLowerCase()}`;
-    }
-
-    // ==========================================================================
-    // 🔀 SECTION B: DRAG-AND-DROP MECHANISM & MUTATION SYNC
-    // ==========================================================================
-    
-    // Bind global toolbar operational listener methods
-    btnStart.addEventListener('click', startSequenceCascade);
-    btnStop.addEventListener('click', stopSequenceOverride);
-    btnReset.addEventListener('click', resetSequenceOverride);
-
-    // Initial sequence input tracking setup
-    bindGridInteractiveListeners();
-
-    // Setup Sidebar Drag Starts
     document.querySelectorAll('.library-card').forEach(card => {
-        card.addEventListener('dragstart', (e) => {
-            if (masterStateStatus === "RUNNING") { e.preventDefault(); return; }
-            e.dataTransfer.setData('text/plain', 'palette-item');
-            e.dataTransfer.setData('asset-label', card.getAttribute('data-label'));
-            e.dataTransfer.setData('asset-flag', card.getAttribute('data-flag'));
-            e.dataTransfer.setData('asset-minutes', card.getAttribute('data-minutes'));
+        card.addEventListener('dragstart', e => {
+            if (state.isRunning) { e.preventDefault(); return; }
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('card-data', JSON.stringify({
+                label: card.dataset.label, flag: card.dataset.flag, minutes: parseInt(card.dataset.minutes) || 5
+            }));
         });
     });
 
-    // Setup Event Grid Interactivity Bound Limits
-    gridDropzone.addEventListener('dragover', (e) => {
-        e.preventDefault(); // Required authorization code allowing browser drop behaviors
-    });
-
-    gridDropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (masterStateStatus === "RUNNING") return;
-
-        const transportType = e.dataTransfer.getData('text/plain');
-        
-        if (transportType === 'palette-item') {
-            // Dragged from Library Column -> Construct entirely new physical instance
-            const label = e.dataTransfer.getData('asset-label');
-            const flag = e.dataTransfer.getData('asset-flag');
-            const mins = e.dataTransfer.getData('asset-minutes');
-            const newCardId = 'seq_card_' + Date.now();
-
-            const newCardHTML = `
-                <div class="event-row state-pending" id="${newCardId}" draggable="true">
-                    <div class="drag-handle">☰</div>
-                    <div class="flag-preview-box">
-                        <span class="flag-icon">🏁</span>
-                        <small class="flag-filename-label">${flag}</small>
-                    </div>
-                    <div class="class-details">
-                        <span class="class-label">${label}</span>
-                        <span class="status-badge">PENDING</span>
-                    </div>
-                    <div class="timer-display-container">
-                        <div class="duration-input-wrapper">
-                            <input type="number" class="minutes-editor" min="1" max="60" value="${mins}">
-                            <span class="unit-text">Min</span>
-                        </div>
-                        <div class="live-countdown-clock hidden">00:00</div>
-                    </div>
-                    <button class="btn-remove-card" title="Remove from sequence">×</button>
-                </div>
-            `;
-            
-            // Append card instance directly where dropped
-            gridDropzone.insertAdjacentHTML('beforeend', newCardHTML);
-            bindGridInteractiveListeners();
-            synchronizeSequenceStateToServer();
-        }
-    });
-
-    function bindGridInteractiveListeners() {
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        
-        rows.forEach(row => {
-            // Duration field mutation interceptors
-            const inputField = row.querySelector('.minutes-editor');
-            inputField.removeEventListener('change', handleDurationFieldChange);
-            inputField.addEventListener('change', handleDurationFieldChange);
-
-            // Row close actions
-            const btnRemove = row.querySelector('.btn-remove-card');
-            if (btnRemove) {
-                btnRemove.onclick = () => {
-                    if (masterStateStatus === "RUNNING") return;
-                    row.remove();
-                    synchronizeSequenceStateToServer();
-                };
+    document.querySelectorAll('.flag-drop-zone').forEach(zone => {
+        zone.addEventListener('dragover', e => {
+            if (state.isRunning) return;
+            e.preventDefault();
+            zone.style.backgroundColor = '#e8f5e9';
+            zone.style.borderColor = '#4caf50';
+        });
+        zone.addEventListener('dragleave', e => {
+            if (e.target === zone) {
+                zone.style.backgroundColor = '#ffffff';
+                zone.style.borderColor = '#bbb';
             }
-
-            // Bound vertical re-ordering events
-            row.removeEventListener('dragstart', handleRowDragStart);
-            row.addEventListener('dragstart', handleRowDragStart);
-            
-            row.removeEventListener('dragover', handleRowDragOver);
-            row.addEventListener('dragover', handleRowDragOver);
         });
-    }
-
-    let activeDraggedRowInstance = null;
-
-    function handleRowDragStart(e) {
-        if (masterStateStatus === "RUNNING") { e.preventDefault(); return; }
-        activeDraggedRowInstance = this;
-        e.dataTransfer.setData('text/plain', 'reorder-item');
-    }
-
-    function handleRowDragOver(e) {
-        e.preventDefault();
-        if (masterStateStatus === "RUNNING" || !activeDraggedRowInstance || activeDraggedRowInstance === this) return;
-
-        // Determine midpoint positioning threshold boundaries
-        const boundingBox = this.getBoundingClientRect();
-        const midpointY = boundingBox.top + (boundingBox.height / 2);
-        
-        if (e.clientY < midpointY) {
-            gridDropzone.insertBefore(activeDraggedRowInstance, this);
-        } else {
-            gridDropzone.insertBefore(activeDraggedRowInstance, this.nextSibling);
-        }
-        synchronizeSequenceStateToServer();
-    }
-
-    function handleDurationFieldChange(e) {
-        const rowElement = e.target.closest('.event-row');
-        const cardId = rowElement.id;
-        const currentMinsValue = e.target.value;
-
-        postToServer('/update-settings', {
-            card_id: cardId,
-            countdown_minutes: currentMinsValue
-        });
-    }
-
-    masterStartInput.addEventListener('change', () => {
-        postToServer('/update-settings', {
-            master_start_time: masterStartInput.value
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            if (state.isRunning) return;
+            zone.style.backgroundColor = '#ffffff';
+            zone.style.borderColor = '#bbb';
+            const data = JSON.parse(e.dataTransfer.getData('card-data'));
+            const gridIndex = zone.dataset.gridIndex || 1;
+            const rowId = 'row_' + Date.now();
+            const row = createRow(rowId, data, gridIndex);
+            zone.appendChild(row);
+            state.sequence.push({
+                id: rowId, label: data.label, flag_image: data.flag, secondary_flag_image: null,
+                countdown_minutes: data.minutes, status: 'PENDING', grid_index: parseInt(gridIndex),
+                current_remaining_seconds: data.minutes * 60
+            });
+            syncToServer();
         });
     });
 
-    function synchronizeSequenceStateToServer() {
-        const rows = gridDropzone.querySelectorAll('.event-row');
-        const completeSequenceArray = [];
-
-        rows.forEach(row => {
-            completeSequenceArray.push({
-                id: row.id,
-                label: row.querySelector('.class-label').innerText,
-                flag_image: row.querySelector('.flag-filename-label').innerText,
-                countdown_minutes: parseInt(row.querySelector('.minutes-editor').value) || 5,
-                status: "PENDING"
-            });
-        });
-
-        postToServer('/update-sequence', { sequence: completeSequenceArray });
-    }
-
-    // Network transport layer abstraction helper
-    function postToServer(endpoint, jsonPayload) {
-        fetch(endpoint, {
+    document.getElementById('btn-start').addEventListener('click', () => {
+        if (state.isRunning || state.sequence.length === 0) return;
+        state.isRunning = true;
+        state.raceStartTime = Date.now();
+        state.sequence[0].status = 'ACTIVE';
+        state.sequence[0].grid_index = state.sequence[0].grid_index || 1;
+        syncToServer();
+        fetch('/update-status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(jsonPayload)
-        })
-        .then(res => res.json())
-        .then(data => console.log(`💾 Sync response [${endpoint}]:`, data))
-        .catch(err => console.error(`❌ Network error updating [${endpoint}]:`, err));
-    }
+            body: JSON.stringify({ active_id: state.sequence[0].id, grid_index: state.sequence[0].grid_index })
+        }).catch(console.error);
+        fetch('/execute-control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'START' })
+        }).catch(console.error);
+        updateStatusBadge('RUNNING');
+        lockUI(true);
+    });
+
+    document.getElementById('btn-stop').addEventListener('click', () => {
+        state.isRunning = false;
+        lockUI(false);
+        fetch('/execute-control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'STOP' }) }).catch(console.error);
+        updateStatusBadge('PAUSED');
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        state.isRunning = false;
+        state.raceStartTime = null;
+        state.sequence.forEach(s => { s.status = 'PENDING'; s.current_remaining_seconds = s.countdown_minutes * 60; });
+        document.querySelectorAll('.event-row').forEach(row => {
+            row.className = 'event-row state-pending';
+            const d = row.querySelector('.live-countdown-display');
+            if (d) d.textContent = '00:00';
+        });
+        document.querySelectorAll('.grid-timer').forEach(t => t.textContent = '00:00');
+        document.getElementById('race-duration-display').textContent = '00:00:00';
+        lockUI(false);
+        fetch('/execute-control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'RESET' }) }).catch(console.error);
+        fetch('/api/reset-race', { method: 'POST' }).catch(console.error);
+        updateStatusBadge('READY');
+    });
+
+    document.getElementById('btn-end-race').addEventListener('click', () => {
+        state.isRunning = false;
+        lockUI(false);
+        fetch('/execute-control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'END_RACE' }) }).catch(console.error);
+        fetch('/api/end-race', { method: 'POST' }).catch(console.error);
+        updateStatusBadge('ENDED');
+    });
+
+    document.getElementById('master-start-input').addEventListener('change', e => { state.masterStartTime = e.target.value; });
+
+    // Display mode toggle buttons
+    document.getElementById('btn-mode-flags').addEventListener('click', () => setDisplayMode('flags'));
+    document.getElementById('btn-mode-both').addEventListener('click', () => setDisplayMode('both'));
+    document.getElementById('btn-mode-number').addEventListener('click', () => setDisplayMode('number'));
+
+    updateClock();
+    setInterval(updateClock, 1000);
+    setInterval(updateCountdown, 100);
+    setInterval(syncRaceDurationFromServer, 1000);
+    syncRaceDurationFromServer();
 });
+
+/**
+ * Sync the RACE DURATION display from the server's authoritative elapsed-time endpoint
+ * (same source Finish Sheet uses). This keeps both pages showing the same time and
+ * ensures the duration survives page reloads/navigation and freezes correctly at race end.
+ */
+function syncRaceDurationFromServer() {
+    fetch('/api/get-elapsed-time').then(r => r.json()).then(data => {
+        if (data.status === 'success') {
+            const totalSeconds = data.elapsed_seconds;
+            const hh = Math.floor(totalSeconds / 3600);
+            const mm = Math.floor((totalSeconds % 3600) / 60);
+            const ss = totalSeconds % 60;
+            document.getElementById('race-duration-display').textContent =
+                `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+        }
+    }).catch(() => {});
+}
+
+function setDisplayMode(mode) {
+    fetch('/set-display-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: mode })
+    }).then(r => r.json()).then(data => {
+        if (data.status === 'success') {
+            document.querySelectorAll('.btn-mode').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-mode-${mode}`).classList.add('active');
+        }
+    }).catch(console.error);
+}
+
+function createRow(rowId, data, gridIndex) {
+    const row = document.createElement('div');
+    row.id = rowId;
+    row.className = 'event-row state-pending';
+    row.dataset.rowId = rowId;
+    row.draggable = true;
+    row.innerHTML = `
+        <div class="event-row-col col-primary-flag">
+            <div class="drag-handle">⋮⋮</div>
+            <div class="flag-preview-box">
+                <img src="/static/flags/${data.flag}" alt="${data.label}" style="width: 40px; height: 35px; object-fit: contain;">
+            </div>
+        </div>
+        <div class="event-row-col col-secondary-flag">
+            <div class="secondary-flag-box" data-row-id="${rowId}" draggable="false" style="width: 50px; height: 40px; background: #ddd; border: 2px dashed #999; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; cursor: copy;">
+                <span>+Flag</span>
+            </div>
+        </div>
+        <div class="event-row-col col-metadata">
+            <div class="class-label">${data.label}</div>
+            <div class="status-badge">state-pending</div>
+        </div>
+        <div class="event-row-col col-timer">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="live-countdown-display" style="font-family: monospace; font-size: 20px; font-weight: bold; color: #f59e0b; min-width: 50px;">00:00</div>
+                <div style="display: flex; flex-direction: column; gap: 3px;">
+                    <input type="number" class="minutes-editor" value="${data.minutes}" min="1" data-row-id="${rowId}" style="width: 50px; padding: 4px; font-size: 12px;">
+                    <span style="font-size: 11px; color: #94a3b8;">mins</span>
+                </div>
+            </div>
+            <button class="btn-remove-card" data-row-id="${rowId}" style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ef4444; font-size: 20px; cursor: pointer; opacity: 0.7;">✕</button>
+        </div>
+    `;
+    row.querySelector('.minutes-editor').addEventListener('change', e => {
+        let m = parseInt(e.target.value);
+        if (m < 1 || isNaN(m)) { m = 1; e.target.value = 1; }
+        const item = state.sequence.find(s => s.id === rowId);
+        if (item) { item.countdown_minutes = m; item.current_remaining_seconds = m * 60; }
+    });
+    row.querySelector('.btn-remove-card').addEventListener('click', () => {
+        if (state.isRunning) return;
+        row.remove();
+        state.sequence = state.sequence.filter(s => s.id !== rowId);
+        syncToServer();
+    });
+
+    // Secondary flag box drop handler
+    const box = row.querySelector('.secondary-flag-box');
+    box.addEventListener('dragover', e => { 
+        e.preventDefault(); 
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy'; 
+        box.style.backgroundColor = '#90caf9';
+        box.style.borderColor = '#1976d2';
+    });
+    box.addEventListener('dragleave', e => { 
+        e.stopPropagation();
+        box.style.backgroundColor = '#ddd';
+        box.style.borderColor = '#999';
+    });
+    box.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        box.style.backgroundColor = '#ddd';
+        box.style.borderColor = '#999';
+        try {
+            const cardData = e.dataTransfer.getData('card-data');
+            if (!cardData) {
+                console.warn('No card data in drop');
+                return;
+            }
+            const d = JSON.parse(cardData);
+            const item = state.sequence.find(s => s.id === rowId);
+            if (item) { 
+                item.secondary_flag_image = d.flag; 
+                box.innerHTML = `<img src="/static/flags/${d.flag}" alt="Secondary" style="width: 40px; height: 35px; object-fit: contain;">`; 
+                syncToServer(); 
+            }
+        } catch (err) {
+            console.error('Secondary flag drop failed:', err);
+        }
+    });
+
+    row.addEventListener('dragstart', e => {
+        if (state.isRunning) { e.preventDefault(); return; }
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('reorder-row', rowId);
+    });
+    row.addEventListener('dragover', e => { if (state.isRunning) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    row.addEventListener('drop', e => {
+        if (state.isRunning) return;
+        e.preventDefault();
+        const sr = e.dataTransfer.getData('reorder-row');
+        if (sr) { const srow = document.getElementById(sr); if (srow && srow.parentNode === row.parentNode) { row.parentNode.insertBefore(srow, row); syncToServer(); } }
+    });
+    return row;
+}
+
+function updateCountdown() {
+    if (!state.isRunning || !state.raceStartTime) return;
+    const e = Math.floor((Date.now() - state.raceStartTime) / 1000);
+    let hasAnyActive = false;
+    
+    // SEQUENTIAL across grids: Start 1's rows run first, then Start 2's rows begin
+    // only once Start 1 is fully complete. Single shared cumulative clock, ordered
+    // by grid_index (grid 1 before grid 2), preserving each grid's internal row order.
+    const orderedSequence = state.sequence.slice().sort((a, b) => (a.grid_index || 1) - (b.grid_index || 1));
+    
+    let cum = 0;
+    orderedSequence.forEach(it => {
+        const dur = it.countdown_minutes * 60, start = cum, end = cum + dur, rem = Math.max(0, end - e);
+        const os = it.status;
+        it.status = e < start ? 'PENDING' : e < end ? 'ACTIVE' : 'CLEAR';
+        it.current_remaining_seconds = it.status === 'PENDING' ? dur : it.status === 'ACTIVE' ? rem : 0;
+        if (it.status === 'ACTIVE' || it.status === 'PENDING') hasAnyActive = true;
+        if (os !== 'ACTIVE' && it.status === 'ACTIVE') {
+            fetch('/update-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active_id: it.id, grid_index: it.grid_index }) }).catch(console.error);
+        }
+        if (os !== 'CLEAR' && it.status === 'CLEAR') {
+            // Countdown hit 00:00 for this flag's class -> notify Finish Sheet.
+            // If a secondary flag is also present (multiple classes starting in the same slot),
+            // fire a class-start for that class too.
+            fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.flag_image }) }).catch(console.error);
+            if (it.secondary_flag_image) {
+                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.secondary_flag_image }) }).catch(console.error);
+            }
+        }
+        const re = document.getElementById(it.id);
+        if (re) {
+            re.className = `event-row state-${it.status.toLowerCase()}`;
+            const de = re.querySelector('.live-countdown-display');
+            if (de) { const mm = Math.floor(it.current_remaining_seconds / 60), ss = it.current_remaining_seconds % 60; de.textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`; }
+        }
+        cum = end;
+    });
+    
+    // Per-grid "Total Countdown" display: time remaining until that grid's own rows
+    // are all complete, accounting for the wait while earlier grids are still running.
+    const grids = {}; orderedSequence.forEach(it => { const g = it.grid_index || 1; if (!grids[g]) grids[g] = []; grids[g].push(it); });
+    let ag = null, at = 0;
+    Object.entries(grids).forEach(([gi, rs]) => {
+        let tot = 0, hap = false;
+        rs.forEach(r => { if (r.status === 'ACTIVE' || r.status === 'PENDING') { tot += r.current_remaining_seconds || r.countdown_minutes * 60; hap = true; } });
+        const te = document.getElementById(`timer-grid-${gi}`);
+        if (te) { const mm = Math.floor(tot / 60), ss = tot % 60; te.textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`; }
+        if (hap && ag === null) { ag = parseInt(gi); at = Math.max(0, Math.ceil(tot / 60)); }
+    });
+    if (hasAnyActive && ag !== null) {
+        fetch('/update-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ grid_index: ag }) }).catch(console.error);
+        fetch('/update-live-timer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live_timer: String(at) }) }).catch(console.error);
+    } else if (!hasAnyActive) {
+        fetch('/update-live-timer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live_timer: '0' }) }).catch(console.error);
+    }
+}
+
+function updateClock() {
+    const n = new Date(), hh = String(n.getHours()).padStart(2, '0'), mm = String(n.getMinutes()).padStart(2, '0'), ss = String(n.getSeconds()).padStart(2, '0');
+    document.getElementById('live-system-clock').textContent = `${hh}:${mm}:${ss}`;
+}
+
+function updateStatusBadge(st) {
+    const b = document.getElementById('global-status-badge');
+    b.textContent = `STATE: ${st}`;
+    b.className = `badge status-${st.toLowerCase()}`;
+}
+
+function lockUI(lk) {
+    document.querySelectorAll('.flag-drop-zone').forEach(z => { z.style.pointerEvents = lk ? 'none' : 'auto'; z.style.opacity = lk ? '0.6' : '1'; });
+    document.querySelectorAll('.event-row').forEach(r => {
+        const h = r.querySelector('.drag-handle'), rb = r.querySelector('.btn-remove-card'), ri = r.querySelector('.minutes-editor');
+        if (h) { h.style.opacity = lk ? '0.3' : '1'; h.style.cursor = lk ? 'not-allowed' : 'row-resize'; }
+        if (rb) { rb.style.opacity = lk ? '0.3' : '0.7'; rb.disabled = lk; }
+        if (ri) { ri.disabled = lk; ri.style.cursor = lk ? 'not-allowed' : 'text'; }
+        r.draggable = !lk;
+    });
+}
+
+function syncToServer() {
+    const seq = Array.from(document.querySelectorAll('.event-row')).map(r => state.sequence.find(s => s.id === r.dataset.rowId)).filter(Boolean);
+    fetch('/update-sequence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sequence: seq }) }).catch(console.error);
+}

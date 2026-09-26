@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Race Scoring Dashboard</title>
+    <link rel="stylesheet" href="/static/css/score.css">
+</head>
+<body>
+
+    <button id="btnExpandSidebar" class="hidden-toggle-btn" style="display: none;">▶ Show Registry</button>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         EDIT SAILOR MODAL
+    ═══════════════════════════════════════════════════════════ -->
+    <div id="editModalOverlay" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Edit Sailor</h3>
+                <button id="btnCloseModal" class="close-btn">✕ Close</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editUid">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" id="editSailorName" placeholder="Full Name">
+                </div>
+                <div class="form-group">
+                    <label>Short Name</label>
+                    <input type="text" id="editShortName" placeholder="Short Name">
+                </div>
+                <div class="form-group">
+                    <label>Sail Number</label>
+                    <input type="text" id="editSailNo" placeholder="Sail Number">
+                </div>
+                <div class="form-group">
+                    <label>Boat Class</label>
+                    <input type="text" id="editBoatClass" placeholder="e.g. ILCA 6">
+                </div>
+                <div class="form-group">
+                    <label>Handicap (YS/PY)</label>
+                    <input type="number" step="0.01" id="editHandicap" placeholder="e.g. 1045">
+                </div>
+                <div class="form-group">
+                    <label>Seed Order</label>
+                    <input type="number" id="editSeed" placeholder="e.g. 1">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnSaveEdit" class="btn-submit">💾 Save Changes</button>
+                <button id="btnDeleteSailor" class="btn-delete">🗑 Delete Sailor</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="score-dashboard-container">
+
+        <!-- ═══════════════════════════════════════════════════════
+             LEFT SIDEBAR — SAILOR REGISTRY
+        ═══════════════════════════════════════════════════════ -->
+        <aside class="registry-sidebar">
+            <div class="sidebar-header">
+                <h2>Sailor Registry</h2>
+                <button id="btnCollapseSidebar" class="close-btn">◀ Hide</button>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="registrySearchInput" placeholder="🔍  Search sailors...">
+            </div>
+
+            <div class="registry-list-container">
+                <div id="savedSailorsList">
+                    {% for sailor in sailors %}
+                    <div class="sailor-row-item {% if sailor.racing_today %}signed-on{% endif %}"
+                         data-uid="{{ sailor.uid }}"
+                         data-sailor-name="{{ sailor.sailor_name }}"
+                         data-short-name="{{ sailor.short_name }}"
+                         data-sail-no="{{ sailor.sail_no }}"
+                         data-boat-class="{{ sailor.boat_class }}"
+                         data-handicap="{{ sailor.handicap }}"
+                         data-seed="{{ sailor.seed }}">
+
+                        <label class="racing-toggle-label">
+                            <input type="checkbox" class="racing-checkbox"
+                                   {% if sailor.racing_today %}checked{% endif %}
+                                   onchange="toggleRacingToday('{{ sailor.uid }}', this.checked)">
+                            <span class="racing-tick"></span>
+                        </label>
+
+                        <div class="sailor-info">
+                            <span class="sailor-primary">
+                                {{ sailor.short_name }}
+                                <span class="sailor-class">({{ sailor.boat_class }})</span>
+                            </span>
+                            <span class="sailor-sail">{{ sailor.sail_no }}</span>
+                        </div>
+
+                        <button class="btn-edit-sailor" onclick="openEditModal(this)" title="Edit">✏</button>
+                    </div>
+                    {% else %}
+                    <p class="empty-msg">No sailors registered yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="add-sailor-section">
+                <button id="btnToggleAddForm" class="btn-add-toggle">＋ Add New Sailor</button>
+                <div id="addSailorForm" class="add-sailor-form" style="display:none;">
+                    <form id="sailorEntryForm" action="/add-sailor" method="POST">
+                        <div class="form-group">
+                            <label for="inputUid">UID</label>
+                            <input type="text" id="inputUid" name="uid" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputSailorName">Full Name</label>
+                            <input type="text" id="inputSailorName" name="sailor_name" required placeholder="e.g. John Doe">
+                        </div>
+                        <div class="form-group">
+                            <label for="inputShortName">Short Name</label>
+                            <input type="text" id="inputShortName" name="short_name" required placeholder="e.g. J. Doe">
+                        </div>
+                        <div class="form-group">
+                            <label for="inputSailNo">Sail Number</label>
+                            <input type="text" id="inputSailNo" name="sail_no" required placeholder="e.g. 19284">
+                        </div>
+                        <div class="form-group">
+                            <label for="inputBoatClass">Boat Class</label>
+                            <input type="text" id="inputBoatClass" name="boat_class" required placeholder="e.g. ILCA 6">
+                        </div>
+                        <div class="form-group">
+                            <label for="inputHandicap">Handicap (YS/PY)</label>
+                            <input type="number" step="0.01" id="inputHandicap" name="handicap" placeholder="e.g. 1045">
+                        </div>
+                        <div class="form-group">
+                            <label for="inputSeed">Seed Order</label>
+                            <input type="number" id="inputSeed" name="seed" placeholder="e.g. 1">
+                        </div>
+                        <button type="submit" class="btn-submit">Save Sailor</button>
+                    </form>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ═══════════════════════════════════════════════════════
+             MAIN PANEL — KANBAN RACE BOARD
+        ═══════════════════════════════════════════════════════ -->
+        <main class="kanban-section">
+            <div class="kanban-header">
+                <div class="kanban-header-row">
+                    <div>
+                        <h2>Race Scoring Board</h2>
+                        <p>Tick <strong>Racing Today</strong> to add sailors. Drag to <strong>Finished</strong> as they cross the line.</p>
+                    </div>
+                    <button id="btnResetDay" class="btn-reset">↺ Reset Day</button>
+                </div>
+            </div>
+
+            <div class="kanban-board">
+
+                <!-- COLUMN 1: ON WATER -->
+                <div class="kanban-lane" data-lane="racing">
+                    <div class="lane-title-badge lane-racing">
+                        <h3>On Water <span class="lane-count" id="countRacing"></span></h3>
+                    </div>
+                    <div class="tile-container" id="racingContainer">
+                        {% for sailor in racing_lane %}
+                        <div class="competitor-tile racing-tile" draggable="true"
+                             data-uid="{{ sailor.uid }}">
+                            <div class="tile-info">
+                                <span class="tile-sail">{{ sailor.sail_no }}</span>
+                                <span class="tile-name">{{ sailor.short_name }} <span class="tile-class">({{ sailor.boat_class }})</span></span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <p class="empty-msg">No sailors on water.<br>Tick Racing Today in the registry.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- COLUMN 2: FINISHED + NAUGHTY CORNER -->
+                <div class="kanban-lane finished-lane-wrapper" data-lane="finished">
+                    <div class="lane-title-badge lane-finished">
+                        <h3>Finished <span class="lane-count" id="countFinished"></span></h3>
+                        <a href="/export-csv" class="btn-export" title="Export results to CSV">⬇ CSV</a>
+                    </div>
+
+                    <!-- Finished reorder zone — drag up moves position up -->
+                    <div class="tile-container" id="finishedContainer">
+                        {% for sailor in finished_lane %}
+                        <div class="competitor-tile finished-tile" draggable="true"
+                             data-uid="{{ sailor.uid }}"
+                             data-finish-time="{{ sailor.finish_time or '' }}">
+                            <span class="place-indicator">{{ loop.index }}</span>
+                            <div class="tile-info">
+                                <span class="tile-sail">{{ sailor.sail_no }}</span>
+                                <span class="tile-name">{{ sailor.short_name }} <span class="tile-class">({{ sailor.boat_class }})</span></span>
+                            </div>
+                            <span class="finish-time-badge">{{ sailor.finish_time or '' }}</span>
+                        </div>
+                        {% else %}
+                        <p class="empty-msg" id="finishedEmptyMsg">No finishes yet.<br>Drag sailors here as they cross the line.</p>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Open drop gap — visual invite above naughty corner -->
+                    <div class="naughty-gap" id="finishedDropGap">
+                        <span class="gap-hint">↑ drag here to finish</span>
+                    </div>
+
+                    <!-- NAUGHTY CORNER -->
+                    <div class="naughty-corner">
+
+                        <!-- DNF zone -->
+                        <div class="penalty-zone dnf-zone" id="dnfContainer" data-lane="dnf">
+                            <div class="penalty-header">
+                                <span class="penalty-icon dnf-icon">✕</span>
+                                <span class="penalty-label">DNF — Did Not Finish</span>
+                                <span class="lane-count" id="countDnf"></span>
+                            </div>
+                            <div class="penalty-tiles">
+                                {% for sailor in dnf_lane %}
+                                <div class="competitor-tile penalty-tile dnf-tile" draggable="true"
+                                     data-uid="{{ sailor.uid }}">
+                                    <div class="tile-info">
+                                        <span class="tile-sail">{{ sailor.sail_no }}</span>
+                                        <span class="tile-name">{{ sailor.short_name }} <span class="tile-class">({{ sailor.boat_class }})</span></span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <!-- DQ zone -->
+                        <div class="penalty-zone dq-zone" id="dqContainer" data-lane="dq">
+                            <div class="penalty-header">
+                                <span class="penalty-icon dq-icon">✕</span>
+                                <span class="penalty-label">DQ — Disqualified</span>
+                                <span class="lane-count" id="countDq"></span>
+                            </div>
+                            <div class="penalty-tiles">
+                                {% for sailor in dq_lane %}
+                                <div class="competitor-tile penalty-tile dq-tile" draggable="true"
+                                     data-uid="{{ sailor.uid }}">
+                                    <div class="tile-info">
+                                        <span class="tile-sail">{{ sailor.sail_no }}</span>
+                                        <span class="tile-name">{{ sailor.short_name }} <span class="tile-class">({{ sailor.boat_class }})</span></span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                    </div><!-- /naughty-corner -->
+                </div><!-- /finished-lane-wrapper -->
+
+            </div><!-- /kanban-board -->
+        </main>
+
+    </div>
+
+    <script src="/static/js/score.js"></script>
+</body>
+</html>

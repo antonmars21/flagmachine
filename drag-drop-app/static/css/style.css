@@ -27,32 +27,8 @@ body {
     flex-direction: column;
     overflow: hidden;
 }
-.display-container {
-    display: flex;              /* Enables flexbox layout */
-    flex-direction: row;        /* Ensures left-to-right alignment */
-    align-items: center;        /* Vertically centers the items */
-    gap: 15px;                  /* Adds spacing between elements */
-}
 
-/* Optional styling to visualize the layout */
-#display-grid-name,
-#display-flag-container,
-#display-class-timer {
-    border: 1px solid #ccc;
-    padding: 10px;
-    text-align: center;
-    background-color: #000;
-    color: #fff;
-    font-size: 24px;
-    font-weight: bold;
-}
-
-#display-flag-container img {
-    max-width: 100px;           /* Adjust image size as needed */
-    height: auto;
-}
-
-/* Header Control Dashboard */
+/* ========== HEADER CONTROL PANEL ========== */
 .global-control-panel {
     background-color: var(--panel-bg);
     padding: 15px 25px;
@@ -68,6 +44,7 @@ body {
     letter-spacing: 2px;
     color: var(--text-main);
 }
+
 .version-tag {
     font-size: 11px;
     color: var(--neon-amber);
@@ -110,10 +87,39 @@ body {
     font-size: 14px;
     transition: transform 0.1s;
 }
+
 .btn:active { transform: scale(0.97); }
 .btn-green { background-color: var(--neon-green); color: #fff; }
 .btn-red { background-color: var(--danger-red); color: #fff; }
 .btn-gray { background-color: #475569; color: #fff; }
+
+.btn-mode {
+    padding: 6px 12px;
+    font-size: 12px;
+    background-color: #334155;
+    color: #cbd5e1;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-mode:hover {
+    background-color: #475569;
+    border-color: #64748b;
+}
+
+.btn-mode.active {
+    background-color: #f59e0b;
+    color: #000;
+    border-color: #d97706;
+    font-weight: bold;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
 
 .system-clock-box {
     text-align: right;
@@ -122,17 +128,36 @@ body {
     border-radius: 6px;
     border: 1px solid #334155;
 }
+
 .clock-label { font-size: 10px; color: var(--text-muted); }
 #live-system-clock { font-size: 18px; font-family: monospace; font-weight: bold; color: #38bdf8; }
+#race-duration-display { font-size: 18px; font-family: monospace; font-weight: bold; color: #f59e0b; }
 
-/* Main Workspace Framework Split */
+/* ========== DISPLAY MODE BAR ========== */
+.display-mode-bar {
+    background-color: #0f172a;
+    padding: 10px 25px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 2px solid #334155;
+}
+
+.display-mode-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    min-width: 100px;
+}
+
+/* ========== MAIN WORKSPACE ========== */
 .workspace-container {
     flex: 1;
     display: flex;
     overflow: hidden;
 }
 
-/* Left Sidebar Asset Palette */
+/* ========== LEFT SIDEBAR: FLAG LIBRARY ========== */
 .sidebar-library {
     width: 300px;
     background-color: #171e30;
@@ -142,9 +167,26 @@ body {
     flex-direction: column;
 }
 
-.sidebar-library h2 { font-size: 16px; margin-bottom: 5px; border-bottom: 1px solid #334155; padding-bottom: 5px;}
-.instruction-text { font-size: 12px; color: var(--text-muted); margin-bottom: 15px; }
-.library-scroller { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.sidebar-library h2 { 
+    font-size: 16px; 
+    margin-bottom: 5px; 
+    border-bottom: 1px solid #334155; 
+    padding-bottom: 5px;
+}
+
+.instruction-text { 
+    font-size: 12px; 
+    color: var(--text-muted); 
+    margin-bottom: 15px; 
+}
+
+.library-scroller { 
+    flex: 1; 
+    overflow-y: auto; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 10px; 
+}
 
 .library-card {
     background: var(--panel-bg);
@@ -157,70 +199,32 @@ body {
     cursor: grab;
 }
 
-.library-drag-handle { color: var(--text-muted); font-size: 18px; }
-.library-flag-frame { background: #0f172a; width: 40px; height: 35px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
-.asset-name { font-weight: bold; font-size: 14px; }
-.asset-default-time { font-size: 12px; color: var(--neon-amber); }
-
-/* Right Column Main Execution Track */
-
-/* updated*/
-
-/* Base Event Grid Card Styles */
-.event-grid {
-    margin-bottom: 25px;
-    padding: 20px;
-    border-radius: 8px;
-   /* background-color: #fafafa;*/
-	background-color: #121824;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    transition: all 0.2s ease;
+.library-drag-handle { 
+    color: var(--text-muted); 
+    font-size: 18px; 
 }
 
-/* Event Grid 1: Explicit Blue Outline */
-.grid-primary {
-    border: 3px solid #0056b3; 
+.library-flag-frame { 
+    background: #0f172a; 
+    width: 40px; 
+    height: 35px; 
+    border-radius: 4px; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
 }
 
-/* Event Grid 2: Explicit Green Outline */
-.grid-secondary {
-    border: 3px solid #1e7e34; 
+.asset-name { 
+    font-weight: bold; 
+    font-size: 14px; 
 }
 
-/* Header design within the grid blocks */
-.event-grid-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #e0e0e0;
-    padding-bottom: 10px;
-    margin-bottom: 15px;
+.asset-default-time { 
+    font-size: 12px; 
+    color: var(--neon-amber); 
 }
 
-.grid-timer {
-    font-family: 'Courier New', Courier, monospace;
-    font-weight: bold;
-    font-size: 1.25rem;
-    background-color: #222;
-    color: #00ff00;
-    padding: 4px 8px;
-    border-radius: 4px;
-}
-
-/* Drop targets */
-.flag-drop-zone {
-    min-height: 120px;
-    background-color: #ffffff;
-    border: 2px dashed #bbb;
-    border-radius: 6px;
-    padding: 12px;
-    display: flex;
-    flex-direction: column; /* Rows pile vertically or side-by-side inside */
-    gap: 10px;
-}
-/* end of updated 050726*/
-
-
+/* ========== RIGHT PANE: EVENT SEQUENCE ========== */
 .event-sequence-pane {
     flex: 1;
     padding: 25px;
@@ -236,117 +240,339 @@ body {
     margin-bottom: 20px;
 }
 
-/* Add to static/css/style.css */
-.timer-go-animation {
-    animation: pulse-green 1s infinite alternate;
+/* ========== EVENT GRIDS ========== */
+.event-grid {
+    margin-bottom: 25px;
+    padding: 20px;
+    border-radius: 8px;
+    background-color: #121824;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
 }
 
-@keyframes pulse-green {
-    0% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
-    100% { box-shadow: 0 0 50px rgba(16, 185, 129, 0.8); }
+.grid-primary {
+    border: 3px solid #0056b3;
 }
 
-#display-class-timer.go { 
-    background-color: var(--go-bg); 
-    border-color: var(--go-text); 
-    color: var(--go-text); 
-    box-shadow: 0 0 50px rgba(16, 185, 129, 0.6); 
+.grid-secondary {
+    border: 3px solid #1e7e34;
 }
 
-.no-flag-placeholder {
-    color: #555;
-    font-size: 1.5rem;
+.event-grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.grid-countdown-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.grid-timer {
+    font-family: 'Courier New', Courier, monospace;
     font-weight: bold;
+    font-size: 1.25rem;
+    background-color: #222;
+    color: var(--neon-amber);
+    padding: 4px 8px;
+    border-radius: 4px;
 }
 
-.badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-.status-ready { background-color: #1e3a8a; color: #93c5fd; }
-.status-running { background-color: #78350f; color: #fde68a; animation: pulse 1.5s infinite alternate; }
-.status-finished { background-color: #064e3b; color: #6ee7b7; }
-
-.event-grid-container {
+/* ========== DROP ZONE ========== */
+.flag-drop-zone {
+    min-height: 150px;
+    background-color: #ffffff;
+    border: 2px dashed #bbb;
+    border-radius: 6px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    min-height: 200px;
+    gap: 10px;
+    overflow-y: auto;
+    transition: all 0.2s ease;
 }
 
-/* ==========================================================================
-   THE THREE-STATE INTERFACE BLOCKS
-   ========================================================================== */
+/* LOCKED DROP ZONE (during race) */
+.flag-drop-zone.disabled-drag-zone {
+    background-color: #e0e0e0;
+    border-color: #999;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 
-/* Base Structural Wrapper Row */
+/* ========== EVENT ROW: 4-COLUMN LAYOUT ========== */
 .event-row {
     background-color: var(--card-pending);
     border: 2px solid var(--border-pending);
     border-radius: 10px;
-    padding: 15px 20px;
-    display: flex;
+    padding: 15px;
+    display: grid;
+    grid-template-columns: 80px 80px 1fr 250px;
     align-items: center;
-    justify-content: space-between;
+    gap: 15px;
     position: relative;
     transition: all 0.2s ease;
 }
 
-.drag-handle { cursor: row-resize; font-size: 20px; color: var(--text-muted); padding-right: 10px; }
-.flag-preview-box { display: flex; flex-direction: column; align-items: center; background: #0f172a; padding: 5px 10px; border-radius: 6px; min-width: 80px; }
-.flag-filename-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.event-row-col {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 
-.class-details { flex: 1; padding-left: 25px; display: flex; flex-direction: column; }
-.class-label { font-size: 18px; font-weight: bold; letter-spacing: 0.5px; }
-.event-row .status-badge { font-size: 11px; font-weight: bold; color: var(--text-muted); margin-top: 4px; display: inline-block; }
+/* Col 1: Primary Flag + Drag Handle */
+.col-primary-flag {
+    justify-content: flex-start;
+}
 
-/* 1. Dynamic Pending Neutral Blueprint */
-.state-pending { opacity: 1; }
+.drag-handle { 
+    cursor: row-resize; 
+    font-size: 18px; 
+    color: var(--text-muted); 
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.drag-handle.locked {
+    cursor: not-allowed;
+    opacity: 0.3;
+    color: #999;
+}
+
+.flag-preview-box { 
+    display: flex; 
+    align-items: center;
+    justify-content: center;
+    background: #0f172a; 
+    padding: 5px; 
+    border-radius: 6px; 
+    min-width: 50px;
+    height: 40px;
+}
+
+.flag-preview-box img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* Col 2: Secondary Flag */
+.col-secondary-flag {
+    justify-content: center;
+}
+
+.secondary-flag-box { 
+    display: flex !important;
+    width: 50px; 
+    height: 40px; 
+    background: #ddd; 
+    border: 2px dashed #999;
+    border-radius: 4px; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: 12px; 
+    color: #666; 
+    cursor: cell;
+    transition: all 0.2s;
+}
+
+.secondary-flag-box:hover {
+    background: #e8e8e8;
+    border-color: #666;
+}
+
+.secondary-flag-box img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* Col 3: Metadata (Class Label + Status) */
+.col-metadata {
+    justify-content: flex-start;
+}
+
+.class-details { 
+    display: flex; 
+    flex-direction: column;
+    gap: 4px;
+}
+
+.class-label { 
+    font-size: 16px; 
+    font-weight: bold; 
+    letter-spacing: 0.5px; 
+}
+
+.status-badge { 
+    font-size: 11px; 
+    font-weight: bold; 
+    color: var(--text-muted); 
+    background: #1a1f36;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    width: fit-content;
+}
+
+/* Col 4: Timer Display + Minutes Input */
+.col-timer {
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    padding-right: 40px;
+}
+
+.live-countdown-display {
+    font-family: 'Courier New', monospace;
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--neon-amber);
+    min-width: 70px;
+    text-align: center;
+}
+
 .minutes-editor {
     background: #0f172a;
     border: 1px solid #475569;
     color: #fff;
-    width: 60px;
+    width: 55px;
     padding: 6px;
-    font-size: 16px;
+    font-size: 14px;
     border-radius: 6px;
     text-align: center;
     font-weight: bold;
+    transition: all 0.2s;
 }
-.unit-text { font-size: 13px; color: var(--text-muted); margin-left: 5px; }
 
-/* 2. HIGH-CONTRAST ACTIVE SPOTLIGHT STATE BLUEPRINT */
+.minutes-editor:disabled,
+.minutes-editor.locked-input {
+    background: #555;
+    border-color: #333;
+    color: #ccc;
+    cursor: not-allowed;
+}
+
+.unit-text { 
+    font-size: 11px; 
+    color: var(--text-muted); 
+}
+
+.btn-remove-card {
+    position: absolute; 
+    right: 0; 
+    top: 50%;
+    transform: translateY(-50%);
+    background: none; 
+    border: none;
+    color: var(--danger-red); 
+    font-size: 20px; 
+    cursor: pointer; 
+    opacity: 0.7;
+    transition: all 0.2s;
+}
+
+.btn-remove-card:hover { 
+    opacity: 1; 
+}
+
+.btn-remove-card:disabled,
+.btn-remove-card.locked {
+    cursor: not-allowed;
+    opacity: 0.3;
+    color: #999;
+}
+
+/* ========== ROW STATE STYLES ========== */
+.state-pending {
+    opacity: 1;
+}
+
 .state-active {
     background-color: var(--card-active) !important;
-    border: 4px solid var(--neon-amber) !important; /* Thick glowing high-visibility border frame */
+    border: 4px solid var(--neon-amber) !important;
     box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
     transform: scale(1.01);
 }
-.state-active .class-label { color: #fff; }
-.state-active .status-badge { color: var(--neon-amber) !important; font-weight: 900; }
-.state-active .live-countdown-clock {
-    font-size: 32px;
-    font-family: monospace;
-    font-weight: 900;
-    color: var(--neon-amber); /* Vibrant tracking timepiece color */
-    letter-spacing: 1px;
+
+.state-active .class-label { 
+    color: #fff; 
 }
 
-/* 3. DISSOLVED COMPLETED CLEAR STATE BLUEPRINT */
+.state-active .status-badge { 
+    color: var(--neon-amber) !important; 
+    font-weight: 900; 
+}
+
+.state-active .live-countdown-display {
+    font-size: 25vw;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+    line-height: 1;
+}
+
 .state-clear {
-    opacity: 0.40 !important; /* Muted scale opacity drop representing historical context */
+    opacity: 0.40 !important;
     background-color: #111524 !important;
     border: 2px dashed #334155 !important;
 }
-.state-clear .class-label { text-decoration: line-through; color: var(--text-muted); }
-.state-clear .status-badge { color: var(--neon-green) !important; }
-.state-clear .live-countdown-clock { font-size: 24px; font-family: monospace; color: var(--text-muted); font-weight: bold; }
 
-/* Global Utilities */
-.hidden { display: none !important; }
-.btn-remove-card {
-    position: absolute; right: 8px; top: 8px; background: none; border: none;
-    color: var(--danger-red); font-size: 20px; cursor: pointer; opacity: 0.7;
+.state-clear .class-label { 
+    text-decoration: line-through; 
+    color: var(--text-muted); 
 }
-.btn-remove-card:hover { opacity: 1; }
 
+.state-clear .status-badge { 
+    color: var(--neon-green) !important; 
+}
+
+.state-clear .live-countdown-display { 
+    color: var(--text-muted); 
+}
+
+/* ========== BADGES ========== */
+.badge { 
+    padding: 6px 12px; 
+    border-radius: 20px; 
+    font-size: 12px; 
+    font-weight: bold; 
+}
+
+.status-ready { 
+    background-color: #1e3a8a; 
+    color: #93c5fd; 
+}
+
+.status-running { 
+    background-color: #78350f; 
+    color: #fde68a; 
+    animation: pulse 1.5s infinite alternate; 
+}
+
+.status-finished { 
+    background-color: #064e3b; 
+    color: #6ee7b7; 
+}
+
+/* ========== ANIMATIONS ========== */
 @keyframes pulse {
     0% { opacity: 0.6; }
     100% { opacity: 1; }
+}
+
+/* ========== UTILITIES ========== */
+.hidden { 
+    display: none !important; 
+}
+
+.no-assets-alert {
+    padding: 15px; 
+    color: #888; 
+    text-align: center; 
+    font-style: italic;
 }
