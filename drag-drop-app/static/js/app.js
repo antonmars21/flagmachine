@@ -1,7 +1,46 @@
 // app.js - Fresh build matching current index.html structure
 const state = { isRunning: false, raceStartTime: null, sequence: [], masterStartTime: "11:30" };
 
+// Refresh Sailwave data from boat_master.json
+async function refreshSailwaveData() {
+    const btn = document.getElementById('btn-refresh-sailwave');
+    if (!btn) return;
+    
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '\ud83d\udd04 Refreshing...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/refresh-sailwave', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert(`Sailwave refresh successful!\n\n` +
+                  `Classes: ${data.imported.classes_new || 0} new, ${data.imported.classes_updated || 0} updated\n` +
+                  `Sailors: ${data.imported.sailors_new || 0} new, ${data.imported.sailors_updated || 0} updated\n` +
+                  `Total: ${data.imported.total_sailors || 0} sailors in database`);
+        } else {
+            alert(`Refresh failed: ${data.message || 'Unknown error'}`);
+        }
+    } catch (error) {
+        alert(`Refresh failed: ${error.message}`);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Add refresh button handler
+    const refreshBtn = document.getElementById('btn-refresh-sailwave');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshSailwaveData);
+    }
+    
     document.querySelectorAll('.library-card').forEach(card => {
         card.addEventListener('dragstart', e => {
             if (state.isRunning) { e.preventDefault(); return; }

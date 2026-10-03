@@ -10,6 +10,43 @@ const state = {
 };
 
 /**
+ * Refresh Sailwave data from boat_master.json
+ */
+async function refreshSailwaveData() {
+    const btn = document.getElementById('btn-refresh-sailwave');
+    if (!btn) return;
+    
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '\ud83d\udd04 Refreshing...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/refresh-sailwave', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert(`Sailwave refresh successful!\n\n` +
+                  `Classes: ${data.imported.classes_new || 0} new, ${data.imported.classes_updated || 0} updated\n` +
+                  `Sailors: ${data.imported.sailors_new || 0} new, ${data.imported.sailors_updated || 0} updated\n` +
+                  `Total: ${data.imported.total_sailors || 0} sailors in database`);
+            // Refresh the registry list
+            await loadRegistryList();
+        } else {
+            alert(`Refresh failed: ${data.message || 'Unknown error'}`);
+        }
+    } catch (error) {
+        alert(`Refresh failed: ${error.message}`);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+/**
  * Initialize the finish sheet on page load
  */
 async function initFinishSheet() {
@@ -22,6 +59,12 @@ async function initFinishSheet() {
     document.getElementById('btn-start-race').addEventListener('click', startRace);
     document.getElementById('btn-end-race').addEventListener('click', endRace);
     document.getElementById('btn-export-csv').addEventListener('click', exportRaceCsv);
+    
+    // Add refresh button handler
+    const refreshBtn = document.getElementById('btn-refresh-sailwave');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshSailwaveData);
+    }
     
     // Update elapsed time every second
     setInterval(updateElapsedTime, 1000);
