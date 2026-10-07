@@ -60,6 +60,38 @@ document.addEventListener("DOMContentLoaded", () => {
     const sessionFinishTimes = {};
 
     // ─────────────────────────────────────────────────────────
+    // CLEAR REGISTRY CHECKBOXES
+    // ─────────────────────────────────────────────────────────
+    const btnClearRegistry = document.getElementById("btnClearRegistry");
+    if (btnClearRegistry) {
+        btnClearRegistry.addEventListener("click", () => {
+            if (!confirm("Clear all checkboxes in the registry?\nAll sailors will be unchecked from Racing Today.")) return;
+            fetch("/clear-registry", { method: "POST" })
+                .then(res => {
+                    if (res.ok) {
+                        window.location.reload();
+                    }
+                });
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // RESET FINISH SHEET
+    // ─────────────────────────────────────────────────────────
+    const btnResetFinishSheet = document.getElementById("btnResetFinishSheet");
+    if (btnResetFinishSheet) {
+        btnResetFinishSheet.addEventListener("click", () => {
+            if (!confirm("Reset the finish sheet?\nAll finish times and orders will be cleared.")) return;
+            fetch("/reset-finish-sheet", { method: "POST" })
+                .then(res => {
+                    if (res.ok) {
+                        window.location.reload();
+                    }
+                });
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────
     // RESET DAY
     // ─────────────────────────────────────────────────────────
     const btnReset = document.getElementById("btnResetDay");
@@ -136,15 +168,86 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ─────────────────────────────────────────────────────────
-    // 3. REAL-TIME REGISTRY SEARCH
+    // 3. REAL-TIME REGISTRY SEARCH & FILTERS
     // ─────────────────────────────────────────────────────────
     if (searchInput) {
         searchInput.addEventListener("input", e => {
             const q = e.target.value.toLowerCase().trim();
-            document.querySelectorAll("#savedSailorsList .sailor-row-item").forEach(row => {
-                row.style.display = row.textContent.toLowerCase().includes(q) ? "flex" : "none";
-            });
+            applyRegistryFilters();
         });
+    }
+
+    // Class filter dropdown
+    const classFilter = document.getElementById("classFilter");
+    if (classFilter) {
+        // Populate class filter options from data
+        const allClasses = [...new Set(
+            [...document.querySelectorAll("#savedSailorsList .sailor-row-item")]
+                .map(row => row.dataset.boatClass)
+                .filter(c => c && c.trim())
+        )].sort();
+        
+        allClasses.forEach(cls => {
+            const option = document.createElement("option");
+            option.value = cls;
+            option.textContent = cls;
+            classFilter.appendChild(option);
+        });
+        
+        classFilter.addEventListener("change", applyRegistryFilters);
+    }
+
+    // Sort order dropdown
+    const sortOrder = document.getElementById("sortOrder");
+    if (sortOrder) {
+        sortOrder.addEventListener("change", applyRegistryFilters);
+    }
+
+    // Apply all filters and sorting
+    function applyRegistryFilters() {
+        const searchQuery = searchInput?.value.toLowerCase().trim() || "";
+        const selectedClass = classFilter?.value || "";
+        const sortBy = sortOrder?.value || "";
+        
+        const rows = document.querySelectorAll("#savedSailorsList .sailor-row-item");
+        const visibleRows = [];
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            const className = row.dataset.boatClass?.toLowerCase() || "";
+            
+            const matchesSearch = !searchQuery || text.includes(searchQuery);
+            const matchesClass = !selectedClass || className === selectedClass.toLowerCase();
+            
+            if (matchesSearch && matchesClass) {
+                visibleRows.push(row);
+                row.style.display = "flex";
+            } else {
+                row.style.display = "none";
+            }
+        });
+        
+        // Apply sorting
+        if (sortBy) {
+            visibleRows.sort((a, b) => {
+                if (sortBy === "name") {
+                    const nameA = (a.dataset.shortName || a.dataset.sailorName || "").toLowerCase();
+                    const nameB = (b.dataset.shortName || b.dataset.sailorName || "").toLowerCase();
+                    return nameA.localeCompare(nameB);
+                } else if (sortBy === "sailno") {
+                    const sailA = (a.dataset.sailNo || "").toLowerCase();
+                    const sailB = (b.dataset.sailNo || "").toLowerCase();
+                    return sailA.localeCompare(sailB);
+                }
+                return 0;
+            });
+            
+            // Re-append sorted rows
+            const container = document.getElementById("savedSailorsList");
+            if (container) {
+                visibleRows.forEach(row => container.appendChild(row));
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────

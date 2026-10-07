@@ -68,6 +68,23 @@
                 <input type="text" id="registrySearchInput" placeholder="🔍  Search sailors...">
             </div>
 
+            <div class="registry-controls">
+                <div class="filter-sort-row">
+                    <select id="classFilter" class="control-select">
+                        <option value="">All Classes</option>
+                    </select>
+                    <select id="sortOrder" class="control-select">
+                        <option value="">Default Order</option>
+                        <option value="name">Sort by Name</option>
+                        <option value="sailno">Sort by Sail No.</option>
+                    </select>
+                </div>
+                <div class="action-buttons-row">
+                    <button id="btnClearRegistry" class="control-btn">Clear All Checkboxes</button>
+                    <button id="btnResetFinishSheet" class="control-btn">Reset Finish Sheet</button>
+                </div>
+            </div>
+
             <div class="registry-list-container">
                 <div id="savedSailorsList">
                     {% for sailor in sailors %}

@@ -711,6 +711,31 @@ def reset_race():
     app_state['race_duration'] = '00:00:00'
     return jsonify({"status": "success"})
 
+
+@app.route('/api/clear-registry', methods=['POST'])
+def clear_registry():
+    """Clear all racing_today flags for all sailors."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE sailors SET racing_today = 0")
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": "All checkboxes cleared"})
+
+@app.route('/api/reset-finish-sheet', methods=['POST'])
+def reset_finish_sheet():
+    """Reset finish sheet - clear all finish times and orders."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE sailors SET finish_order = NULL, finish_time = NULL")
+    c.execute("UPDATE race_sailors SET finish_time = NULL, placement = NULL")
+    conn.commit()
+    conn.close()
+    # Also clear in-memory sequence
+    app_state['sequence'] = []
+    app_state['status'] = 'READY'
+    return jsonify({"status": "success", "message": "Finish sheet reset"})
+
 @app.route('/api/export-race-csv')
 def export_race_csv():
     """Export current/last race as CSV: class, sailor, start time, laps, end time."""
@@ -895,6 +920,123 @@ def get_elapsed_time():
             "frozen": race_ended
         })
     return jsonify({"status": "error", "message": "No active race"}), 400
+
+# ==================== SAILWAVE INTEGRATION ====================
+
+@app.route('/api/refresh-sailwave', methods=['POST'])
+def refresh_sailwave():
+    """
+    Import/refresh sailor and boat class data from Sailwave boat_master.json.
+    
+    This endpoint triggers the import script to read from boat_master.json
+    and update the score.db with the latest data from Sailwave.
+    
+    Returns:
+        {"status": "success", "message": "...", "imported": {...}}
+    """
+    import subprocess
+    import sys
+    
+    # Path to the import script
+    script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'import_sailwave.py')
+    
+    # Check if import script exists
+    if not os.path.exists(script_path):
+        return jsonify({
+            "status": "error",
+            "message": f"Import script not found: {script_path}"
+        }), 404
+    
+    # Check if boat_master.json exists
+    json_path = os.path.join(os.path.dirname(__file__), 'tempref', 'boat_master.json')
+    if not os.path.exists(json_path):
+        return jsonify({
+            "status": "error",
+            "message": f"boat_master.json not found: {json_path}. "
+                       f"Please copy it from Sailwave to the tempref/ folder."
+        }), 404
+    
+    try:
+        # Run the import script
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(__file__)
+        )
+        
+        if result.returncode == 0:
+            # Parse the output to get statistics
+            output_lines = result.stdout.split('\n')
+            summary = {}
+            
+            for line in output_lines:
+                if 'Boat Classes:' in line:
+                    parts = line.strip().split(',')
+                    for part in parts:
+                        if 'new' in part:
+                            summary['classes_new'] = int(part.split()[0])
+                        elif 'updated' in part:
+                            summary['classes_updated'] = int(part.split()[0])
+                elif 'Sailors:' in line:
+                    parts = line.strip().split(',')
+                    for part in parts:
+                        if 'new' in part:
+                            summary['sailors_new'] = int(part.split()[0])
+                        elif 'updated' in part:
+                            summary['sailors_updated'] = int(part.split()[0])
+                        elif 'skipped' in part:
+                            summary['sailors_skipped'] = int(part.split()[0])
+                elif 'Total Sailors in DB:' in line:
+                    summary['total_sailors'] = int(line.strip().split(':')[-1].strip())
+            
+            return jsonify({
+                "status": "success",
+                "message": "Sailwave data refreshed successfully",
+                "imported": summary,
+                "output": result.stdout
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Import failed",
+                "error": result.stderr,
+                "output": result.stdout
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Import failed: {str(e)}"
+        }), 500
+
+
+@app.route('/api/refresh-sailwave-status', methods=['GET'])
+def refresh_sailwave_status():
+    """
+    Check if boat_master.json is available for import.
+    
+    Returns:
+        {"status": "available" or "not_found", "path": "..."}
+    """
+    json_path = os.path.join(os.path.dirname(__file__), 'tempref', 'boat_master.json')
+    
+    if os.path.exists(json_path):
+        # Get file info
+        stat = os.stat(json_path)
+        return jsonify({
+            "status": "available",
+            "path": json_path,
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+        })
+    else:
+        return jsonify({
+            "status": "not_found",
+            "path": json_path,
+            "message": "boat_master.json not found. Please copy from Sailwave."
+        })
+
 
 if __name__ == '__main__':
     app.run(host='localhost', port=5000, debug=True)
