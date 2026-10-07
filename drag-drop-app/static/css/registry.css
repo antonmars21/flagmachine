@@ -48,6 +48,53 @@
     box-sizing: border-box;
 }
 
+/* Registry Controls */
+.registry-controls {
+    flex-shrink: 0;
+    padding: 10px 15px;
+    border-bottom: 1px solid #334155;
+}
+
+.filter-sort-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.action-buttons-row {
+    display: flex;
+    gap: 8px;
+}
+
+.control-select, .control-btn {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    background-color: #0f172a;
+    color: #f8fafc;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.control-select:focus, .control-btn:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.control-select:hover, .control-btn:hover {
+    border-color: #475569;
+}
+
+.control-btn {
+    flex: 1;
+    white-space: nowrap;
+}
+
+.control-btn:active {
+    background-color: #1a2332;
+}
+
 .registry-list-container {
     flex: 1;
     overflow-y: auto;

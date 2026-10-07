@@ -518,14 +518,20 @@ async function initRegistrySidebar() {
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
             sidebar.classList.toggle('open');
-            if (sidebar.classList.contains('open')) loadRegistryList();
+            if (sidebar.classList.contains('open')) {
+                loadRegistryList();
+                loadFilterPreferences();
+            }
         });
     }
     if (closeBtn) {
         closeBtn.addEventListener('click', () => sidebar.classList.remove('open'));
     }
     if (searchInput) {
-        searchInput.addEventListener('input', () => filterRegistryList(searchInput.value));
+        searchInput.addEventListener('input', () => {
+            applyRegistryFilters();
+            saveFilterPreferences();
+        });
     }
     if (addToggleBtn && addForm) {
         addToggleBtn.addEventListener('click', () => {
@@ -534,6 +540,95 @@ async function initRegistrySidebar() {
     }
     if (addForm) {
         addForm.addEventListener('submit', handleAddSailorSubmit);
+    }
+    
+    // New registry controls
+    const classFilter = document.getElementById('classFilter');
+    const sortOrder = document.getElementById('sortOrder');
+    const btnClearRegistry = document.getElementById('btnClearRegistry');
+    const btnResetFinishSheet = document.getElementById('btnResetFinishSheet');
+    
+    // Load saved filter/sort preferences from localStorage
+    function loadFilterPreferences() {
+        if (classFilter) {
+            const savedClass = localStorage.getItem('registry_class_filter') || '';
+            if (savedClass) classFilter.value = savedClass;
+        }
+        if (sortOrder) {
+            const savedSort = localStorage.getItem('registry_sort_order') || '';
+            if (savedSort) sortOrder.value = savedSort;
+        }
+        if (searchInput) {
+            const savedSearch = localStorage.getItem('registry_search_query') || '';
+            if (savedSearch) searchInput.value = savedSearch;
+        }
+    }
+    
+    function saveFilterPreferences() {
+        if (classFilter) localStorage.setItem('registry_class_filter', classFilter.value);
+        if (sortOrder) localStorage.setItem('registry_sort_order', sortOrder.value);
+        if (searchInput) localStorage.setItem('registry_search_query', searchInput.value);
+    }
+    
+    // Populate class filter dropdown
+    if (classFilter) {
+        const response = await fetch('/api/sailors-registry');
+        const data = await response.json();
+        if (data.status === 'success' && data.sailors) {
+            const allClasses = [...new Set(
+                data.sailors.map(s => s.boat_class).filter(c => c && c.trim())
+            )].sort();
+            
+            allClasses.forEach(cls => {
+                const option = document.createElement('option');
+                option.value = cls;
+                option.textContent = cls;
+                classFilter.appendChild(option);
+            });
+        }
+        classFilter.addEventListener('change', () => {
+            applyRegistryFilters();
+            saveFilterPreferences();
+        });
+    }
+    
+    if (sortOrder) {
+        sortOrder.addEventListener('change', () => {
+            applyRegistryFilters();
+            saveFilterPreferences();
+        });
+    }
+    
+    // Clear All Checkboxes button
+    if (btnClearRegistry) {
+        btnClearRegistry.addEventListener('click', () => {
+            if (!confirm('Clear all checkboxes in the registry?\nAll sailors will be unchecked from Racing Today.')) return;
+            fetch('/api/clear-registry', { method: 'POST' })
+                .then(res => {
+                    if (res.ok) {
+                        loadRegistryList();
+                        if (!state.race_active) loadAndRenderSailors();
+                        // Reapply filters after clearing registry
+                        setTimeout(applyRegistryFilters, 100);
+                    }
+                });
+        });
+    }
+    
+    // Reset Finish Sheet button
+    if (btnResetFinishSheet) {
+        btnResetFinishSheet.addEventListener('click', () => {
+            if (!confirm('Reset the finish sheet?\nAll finish times and orders will be cleared.')) return;
+            fetch('/api/reset-finish-sheet', { method: 'POST' })
+                .then(res => {
+                    if (res.ok) {
+                        loadRegistryList();
+                        if (!state.race_active) loadAndRenderSailors();
+                        // Reapply filters after resetting finish sheet
+                        setTimeout(applyRegistryFilters, 100);
+                    }
+                });
+        });
     }
     
     await loadRegistryList();
@@ -547,6 +642,8 @@ async function loadRegistryList() {
         
         state.registry_sailors = data.sailors;
         renderRegistryList(data.sailors);
+        // Reapply filters after loading registry
+        setTimeout(applyRegistryFilters, 50);
     } catch (error) {
         console.error("Error loading registry:", error);
     }
@@ -567,6 +664,10 @@ function renderRegistryList(sailors) {
         row.className = 'sailor-row-item' + (sailor.racing_today ? ' signed-on' : '');
         row.dataset.uid = sailor.uid;
         row.dataset.searchText = `${sailor.short_name} ${sailor.sailor_name} ${sailor.sail_no} ${sailor.boat_class}`.toLowerCase();
+        row.dataset.boatClass = sailor.boat_class || '';
+        row.dataset.shortName = sailor.short_name || '';
+        row.dataset.sailorName = sailor.sailor_name || '';
+        row.dataset.sailNo = sailor.sail_no || '';
         
         row.innerHTML = `
             <label class="racing-toggle-label">
@@ -590,10 +691,60 @@ function renderRegistryList(sailors) {
 }
 
 function filterRegistryList(query) {
-    const q = query.trim().toLowerCase();
-    document.querySelectorAll('.sailor-row-item').forEach(row => {
-        row.style.display = row.dataset.searchText.includes(q) ? '' : 'none';
+    // Fallback for existing calls - just apply the query filter
+    applyRegistryFilters();
+}
+
+// Combined filter and sort function for registry list
+function applyRegistryFilters() {
+    const searchInput = document.getElementById('registry-search');
+    const classFilter = document.getElementById('classFilter');
+    const sortOrder = document.getElementById('sortOrder');
+    
+    const searchQuery = searchInput?.value.toLowerCase().trim() || "";
+    const selectedClass = classFilter?.value || "";
+    const sortBy = sortOrder?.value || "";
+    
+    const rows = document.querySelectorAll('.sailor-row-item');
+    const visibleRows = [];
+    
+    rows.forEach(row => {
+        const text = row.dataset.searchText || row.textContent.toLowerCase();
+        const className = row.dataset.boatClass?.toLowerCase() || 
+                        (row.querySelector('.sailor-class')?.textContent || "").toLowerCase();
+        
+        const matchesSearch = !searchQuery || text.includes(searchQuery);
+        const matchesClass = !selectedClass || className === selectedClass.toLowerCase();
+        
+        if (matchesSearch && matchesClass) {
+            visibleRows.push(row);
+            row.style.display = "";
+        } else {
+            row.style.display = "none";
+        }
     });
+    
+    // Apply sorting
+    if (sortBy && visibleRows.length > 0) {
+        visibleRows.sort((a, b) => {
+            if (sortBy === "name") {
+                const nameA = (a.dataset.shortName || a.dataset.sailorName || a.querySelector('.sailor-primary')?.textContent || "").toLowerCase();
+                const nameB = (b.dataset.shortName || b.dataset.sailorName || b.querySelector('.sailor-primary')?.textContent || "").toLowerCase();
+                return nameA.localeCompare(nameB);
+            } else if (sortBy === "sailno") {
+                const sailA = (a.dataset.sailNo || a.querySelector('.sailor-sail')?.textContent || "").replace(/[^\d]/g, '').toLowerCase();
+                const sailB = (b.dataset.sailNo || b.querySelector('.sailor-sail')?.textContent || "").replace(/[^\d]/g, '').toLowerCase();
+                return sailA.localeCompare(sailB);
+            }
+            return 0;
+        });
+        
+        // Re-append sorted rows to maintain visibility
+        const container = document.getElementById('registry-list');
+        if (container) {
+            visibleRows.forEach(row => container.appendChild(row));
+        }
+    }
 }
 
 async function toggleRacingToday(uid, checked, row) {
@@ -608,6 +759,8 @@ async function toggleRacingToday(uid, checked, row) {
             row.classList.toggle('signed-on', checked);
             // Refresh the dynamic columns since fleet selection changed
             if (!state.race_active) loadAndRenderSailors();
+            // Reapply filters to ensure row visibility is maintained
+            applyRegistryFilters();
         }
     } catch (error) {
         console.error("Error toggling racing_today:", error);
