@@ -255,6 +255,25 @@ def export_csv():
         headers={'Content-Disposition': 'attachment; filename=race_results.csv'}
     )
 
+@app.route('/clear-registry', methods=['POST'])
+def clear_registry():
+    """Clear all racing_today flags for all sailors."""
+    conn = get_db_connection()
+    conn.execute("UPDATE sailors SET racing_today = 0")
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": "All checkboxes cleared"})
+
+@app.route('/reset-finish-sheet', methods=['POST'])
+def reset_finish_sheet():
+    """Reset finish sheet - clear all finish times and orders."""
+    conn = get_db_connection()
+    conn.execute("UPDATE sailors SET finish_order = NULL, finish_time = NULL")
+    conn.execute("UPDATE sailors SET status = 'racing' WHERE status IN ('finished', 'dnf', 'dq')")
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": "Finish sheet reset"})
+
 @app.route('/reset-day', methods=['POST'])
 def reset_day():
     """Clear all racing_today flags and finish data for a fresh race."""
