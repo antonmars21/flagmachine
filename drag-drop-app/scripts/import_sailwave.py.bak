@@ -21,7 +21,6 @@ Usage:
 
 import sqlite3
 import json
-import re
 import os
 import sys
 import argparse
@@ -200,67 +199,8 @@ def parse_sailwave_json(json_path):
         print(f"ERROR: File not found: {json_path}")
         return None, None
     
-    # Try multiple encodings for JSON files
-    encodings = ['utf-8', 'utf-16-le', 'utf-16-be', 'cp1252', 'latin-1']
-    data = None
-    
-    for encoding in encodings:
-        try:
-            with open(json_path, 'r', encoding=encoding) as f:
-                data = json.load(f)
-            print(f"  [Encoding detected: {encoding}]")
-            break
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    
-    # If JSON parsing failed, try HTML format
-    if data is None:
-        try:
-            # Try opening as HTML - first try .htm version, then original path
-            html_path = json_path
-            if json_path.endswith('.json'):
-                html_path = json_path[:-5] + '.htm'
-            
-            with open(html_path, 'rb') as f:
-                html_content = f.read()
-            
-            # Try different encodings for HTML
-            for encoding in ['ISO-8859-1', 'latin-1', 'utf-8', 'cp1252']:
-                try:
-                    html_text = html_content.decode(encoding)
-                    break
-                except:
-                    continue
-            
-            # Extract table data from HTML
-            match = re.search(r'<tbody>(.*?)</tbody>', html_text, re.DOTALL)
-            if match:
-                tbody = match.group(1)
-                rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody, re.DOTALL)
-                
-                boats = []
-                for row in rows:
-                    cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, re.DOTALL)
-                    if len(cells) >= 7:
-                        cleaned = [re.sub(r'<[^>]*>', '', c).strip() for c in cells]
-                        if len(cleaned) >= 7 and cleaned[4]:  # Has SailNo
-                            boat_data = {
-                                'sail_no': cleaned[4],
-                                'boat': cleaned[3],
-                                'class': cleaned[2],
-                                'helm': cleaned[5],
-                                'py': cleaned[6] if cleaned[6] else '1000'
-                            }
-                            boats.append(boat_data)
-                
-                print(f"  [HTML format detected: {len(boats)} boats found]")
-                return boats, []
-        except Exception as e:
-            print(f"  [HTML parsing failed: {e}]")
-    
-    if data is None:
-        print(f"ERROR: Could not decode file with encodings: {encodings}")
-        return None, None
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
     
     boats = []
     classes = []
@@ -701,11 +641,8 @@ def main():
         # Try multiple locations
         for p in [
             os.path.join(project_dir, 'tempref', 'boat_master.json'),
-            os.path.join(project_dir, 'tempref', 'boat_master.htm'),
             os.path.join(project_dir, 'boat_master.json'),
-            os.path.join(project_dir, 'boat_master.htm'),
             os.path.join(script_dir, 'boat_master.json'),
-            os.path.join(script_dir, 'boat_master.htm'),
             'C:\\Users\\Public\\Documents\\Sailwave\\Flagmachine_database\\boat_master.json',
         ]:
             if os.path.exists(p):
@@ -732,10 +669,10 @@ def main():
     success = import_sailwave_data(json_path, db_path, args.cleanup_orphans)
     
     if success:
-        print("\n[OK] Import completed successfully")
+        print("\n✓ Import completed successfully")
         sys.exit(0)
     else:
-        print("\n[FAILED] Import failed")
+        print("\n✗ Import failed")
         sys.exit(1)
 
 

@@ -711,6 +711,31 @@ def reset_race():
     app_state['race_duration'] = '00:00:00'
     return jsonify({"status": "success"})
 
+
+@app.route('/api/clear-registry', methods=['POST'])
+def clear_registry():
+    """Clear all racing_today flags for all sailors."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE sailors SET racing_today = 0")
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": "All checkboxes cleared"})
+
+@app.route('/api/reset-finish-sheet', methods=['POST'])
+def reset_finish_sheet():
+    """Reset finish sheet - clear all finish times and orders."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE sailors SET finish_order = NULL, finish_time = NULL")
+    c.execute("UPDATE race_sailors SET finish_time = NULL, placement = NULL")
+    conn.commit()
+    conn.close()
+    # Also clear in-memory sequence
+    app_state['sequence'] = []
+    app_state['status'] = 'READY'
+    return jsonify({"status": "success", "message": "Finish sheet reset"})
+
 @app.route('/api/export-race-csv')
 def export_race_csv():
     """Export current/last race as CSV: class, sailor, start time, laps, end time."""

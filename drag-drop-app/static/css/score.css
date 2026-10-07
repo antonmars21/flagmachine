@@ -106,6 +106,55 @@ body {
 }
 
 /* ==========================================================================
+   REGISTRY CONTROLS
+   ========================================================================== */
+.registry-controls {
+    flex-shrink: 0;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.filter-sort-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.action-buttons-row {
+    display: flex;
+    gap: 8px;
+}
+
+.control-select, .control-btn {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.control-select:focus, .control-btn:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.control-select:hover, .control-btn:hover {
+    border-color: var(--accent-hover);
+}
+
+.control-btn {
+    flex: 1;
+    white-space: nowrap;
+}
+
+.control-btn:active {
+    background-color: var(--panel-color);
+}
+
+/* ==========================================================================
    FLEET LIST
    ========================================================================== */
 .registry-list-container {
