@@ -184,39 +184,6 @@ def get_active_class_ids_from_sequence():
     conn.close()
     return ids
 
-
-def get_class_sequence_mapping():
-    """Return a dict mapping class_id to sequence_number based on current Flag Machine sequence.
-    For classes in the current sequence, use their grid_index as sequence_number.
-    For classes that have already started (in race_class_starts), use their stored sequence_number.
-    """
-    mapping = {}
-    
-    # First, get sequence numbers from race_class_starts for classes that have already started
-    race_id = app_state.get('race_id')
-    if race_id:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('SELECT class_id, sequence_number FROM race_class_starts WHERE race_id = ?', (race_id,))
-        for row in c.fetchall():
-            mapping[row['class_id']] = row['sequence_number']
-        conn.close()
-    
-    # Then, get sequence numbers from current Flag Machine sequence for classes that haven't started
-    conn = get_db_connection()
-    c = conn.cursor()
-    for item in app_state.get('sequence', []):
-        flag_image = item.get('flag_image')
-        grid_index = item.get('grid_index', 1)
-        if flag_image:
-            c.execute('SELECT class_id FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
-            row = c.fetchone()
-            if row and row['class_id'] not in mapping:  # Don't override already-started classes
-                mapping[row['class_id']] = grid_index
-    conn.close()
-    
-    return mapping
-
 # ==================== FLAG MACHINE ROUTES ====================
 
 @app.route('/')
@@ -373,20 +340,15 @@ def sailors_for_onwater():
     class_start_times = app_state.get('class_start_times', {})
     started_class_ids = {int(cid) for cid in class_start_times.keys()}
     
-    # Get sequence number mapping for grouping classes by start sequence
-    class_sequence_mapping = get_class_sequence_mapping()
-    
     if race_id and started_class_ids:
         # Started classes: locked roster from race_sailors (whoever was signed on at start time)
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, 
                    rs.lap_count, rs.finish_time, rs.placement,
-                   bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
-                   rcs.sequence_number
+                   bc.class_id, bc.class_name, bc.flag_image, bc.color_hex
             FROM sailors s
             JOIN race_sailors rs ON s.uid = rs.uid
             LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
-            LEFT JOIN race_class_starts rcs ON rcs.race_id = rs.race_id AND rcs.class_id = s.class_id
             WHERE rs.race_id = ? AND s.class_id IN ({})
             ORDER BY s.boat_class, s.seed
         '''.format(','.join('?' * len(started_class_ids))), (race_id, *started_class_ids))
@@ -399,8 +361,7 @@ def sailors_for_onwater():
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed,
                    0 as lap_count, NULL as finish_time, NULL as placement,
-                   bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
-                   NULL as sequence_number
+                   bc.class_id, bc.class_name, bc.flag_image, bc.color_hex
             FROM sailors s
             LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
             WHERE s.racing_today = 1 AND (s.class_id IS NULL OR s.class_id NOT IN ({}))
@@ -410,8 +371,7 @@ def sailors_for_onwater():
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed,
                    0 as lap_count, NULL as finish_time, NULL as placement,
-                   bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
-                   NULL as sequence_number
+                   bc.class_id, bc.class_name, bc.flag_image, bc.color_hex
             FROM sailors s
             LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
             WHERE s.racing_today = 1
@@ -424,30 +384,6 @@ def sailors_for_onwater():
     
     sequence_groups = {}
     open_category_sailors = []
-    
-    # First, create empty groups for all classes in the current Flag Machine sequence
-    # This ensures columns appear even for classes with no sailors
-    for item in app_state.get('sequence', []):
-        flag_image = item.get('flag_image')
-        grid_index = item.get('grid_index', 1)
-        if flag_image:
-            conn_temp = get_db_connection()
-            c_temp = conn_temp.cursor()
-            c_temp.execute('SELECT class_id, class_name, flag_image, color_hex FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
-            class_row = c_temp.fetchone()
-            if class_row:
-                class_id = class_row['class_id']
-                group_key = (class_id, grid_index)
-                if group_key not in sequence_groups:
-                    sequence_groups[group_key] = {
-                        'class_id': class_id,
-                        'class_name': class_row['class_name'],
-                        'flag_image': class_row['flag_image'],
-                        'color_hex': class_row['color_hex'],
-                        'sequence_number': grid_index,
-                        'sailors': []
-                    }
-            conn_temp.close()
     
     for row in rows:
         class_id = row['class_id']
@@ -468,50 +404,21 @@ def sailors_for_onwater():
             'class_start_time': start_time
         }
         
-        # Get sequence number for this class
-        sequence_number = row['sequence_number'] if row['sequence_number'] is not None else class_sequence_mapping.get(class_id, 1)
-        
-        # Add sequence_number to sailor dict
-        sailor_dict['sequence_number'] = sequence_number
-        
-        # Determine if this sailor should be in a class column or open category
-        # If class_id is None, always go to open category
-        if class_id is None:
-            open_category_sailors.append(sailor_dict)
-        # If there are active classes in the sequence, only include classes that are in the sequence
-        elif active_class_ids and class_id in active_class_ids:
-            # Group by class + sequence for sequence-aware display
-            group_key = (class_id, sequence_number)
-            if group_key not in sequence_groups:
-                sequence_groups[group_key] = {
+        if class_id is not None and class_id in active_class_ids:
+            if class_id not in sequence_groups:
+                sequence_groups[class_id] = {
                     'class_id': class_id,
                     'class_name': row['class_name'],
                     'flag_image': row['flag_image'],
                     'color_hex': row['color_hex'],
-                    'sequence_number': sequence_number,
                     'sailors': []
                 }
-            sequence_groups[group_key]['sailors'].append(sailor_dict)
-        # If no active classes in sequence (empty sequence), show all classes grouped by class only
-        elif not active_class_ids:
-            # When no flags in sequence, group by class only (original behavior)
-            group_key = (class_id, 1)  # Use sequence 1 for all
-            if group_key not in sequence_groups:
-                sequence_groups[group_key] = {
-                    'class_id': class_id,
-                    'class_name': row['class_name'],
-                    'flag_image': row['flag_image'],
-                    'color_hex': row['color_hex'],
-                    'sequence_number': 1,
-                    'sailors': []
-                }
-            sequence_groups[group_key]['sailors'].append(sailor_dict)
+            sequence_groups[class_id]['sailors'].append(sailor_dict)
         else:
-            # Class exists but not in current sequence - goes to open category
             open_category_sailors.append(sailor_dict)
     
-    # Order sequence-class columns: by sequence number first, then by sailor count (most on left within same sequence)
-    ordered_columns = sorted(sequence_groups.values(), key=lambda g: (g.get('sequence_number', 1), -len(g['sailors'])))
+    # Order sequence-class columns: most sailors on the left
+    ordered_columns = sorted(sequence_groups.values(), key=lambda g: len(g['sailors']), reverse=True)
     
     if open_category_sailors:
         ordered_columns.append({
@@ -519,7 +426,6 @@ def sailors_for_onwater():
             'class_name': 'Open Category',
             'flag_image': 'openclass.png',
             'color_hex': '#64748b',
-            'sequence_number': 0,  # Open category has no sequence
             'sailors': open_category_sailors
         })
     
@@ -784,30 +690,6 @@ def race_status():
         "race_end_timestamp": app_state.get('race_end_timestamp')
     })
 
-@app.route('/api/lap-times/<uid>')
-def get_lap_times(uid):
-    """Get lap times for a specific sailor in the current race."""
-    race_id = app_state.get('race_id')
-    if not race_id:
-        return jsonify({"status": "error", "message": "No active race"}), 400
-    
-    conn = get_db_connection()
-    c = conn.cursor()
-    
-    c.execute('''
-        SELECT lap_number, timestamp 
-        FROM lap_records 
-        WHERE race_id = ? AND uid = ? 
-        ORDER BY lap_number
-    ''', (race_id, uid))
-    
-    lap_records = c.fetchall()
-    conn.close()
-    
-    lap_times = [{'lap_number': row['lap_number'], 'timestamp': row['timestamp']} for row in lap_records]
-    
-    return jsonify({"status": "success", "uid": uid, "lap_times": lap_times})
-
 @app.route('/api/end-race', methods=['POST'])
 def end_race():
     """Stop all timers and record the race's end time. Idempotent."""
@@ -877,51 +759,32 @@ def export_race_csv():
     c = conn.cursor()
     
     c.execute('''
-        SELECT s.uid, bc.class_name, s.sail_no, s.short_name,
+        SELECT bc.class_name, s.sail_no, s.short_name,
                rcs.start_time as class_start_time,
                rs.lap_count, rs.finish_time,
-               r.end_time as race_end_time,
-               rcs.sequence_number
+               r.end_time as race_end_time
         FROM race_sailors rs
         JOIN sailors s ON rs.uid = s.uid
         LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
         LEFT JOIN race_class_starts rcs ON rcs.race_id = rs.race_id AND rcs.class_id = s.class_id
         JOIN races r ON r.race_id = rs.race_id
         WHERE rs.race_id = ?
-        ORDER BY rcs.sequence_number, bc.class_name, s.sail_no
+        ORDER BY bc.class_name, s.sail_no
     ''', (race_id,))
     rows = c.fetchall()
     conn.close()
     
-    # Get lap times for all sailors in this race
-    c.execute('SELECT uid, lap_number, timestamp FROM lap_records WHERE race_id = ? ORDER BY uid, lap_number', (race_id,))
-    lap_records = c.fetchall()
-    
-    # Organize lap times by uid
-    lap_times_by_uid = {}
-    for lr in lap_records:
-        uid = lr['uid']
-        if uid not in lap_times_by_uid:
-            lap_times_by_uid[uid] = []
-        lap_times_by_uid[uid].append(lr['timestamp'])
-    
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time'])
+    writer.writerow(['Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Finish Time', 'Race End Time'])
     
     for row in rows:
-        uid = row['uid']
-        lap_times = lap_times_by_uid.get(uid, [])
-        lap_times_str = '; '.join(lap_times) if lap_times else ''
-        
         writer.writerow([
-            row['sequence_number'] if row['sequence_number'] is not None else '',
             row['class_name'] or 'Unknown',
             row['short_name'],
             row['sail_no'],
             row['class_start_time'] or '',
             row['lap_count'],
-            lap_times_str,
             row['finish_time'] or '',
             row['race_end_time'] or ''
         ])

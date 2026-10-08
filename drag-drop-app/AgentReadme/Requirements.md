@@ -1,11 +1,12 @@
-# Requirements: Flag Machine + Finish Sheet v1.1
+# Requirements: Flag Machine + Finish Sheet v1.2
 
 ---
 
-## PART 1: FLAG MACHINE (Sessions 1–3 — Unchanged)
+## PART 1: FLAG MACHINE (Sessions 1–3 + Session 5 Enhancements)
 
 ### 1. Control Panel Interface
-- **Multi-grid support:** Define 2 boat classes (Event Grid 1, Event Grid 2) with separate sequences
+- **Multi-grid support:** Define N boat classes with separate sequences (unlimited dynamic creation via "+" button)
+- **Grid management:** Add/Remove start sequence grids with unique visual identification
 - **Flag library:** Drag-and-drop library of flag images (PNG/JPG from `/static/flags/`)
 - **Sequence builder:** Drag flags into grid to create event sequence
 - **Countdown settings:** Each row shows editable duration in whole minutes (min 1, default based on flag)
@@ -37,42 +38,39 @@
 
 ---
 
-## PART 2: FINISH SHEET v1.1 (Session 3 — BUILT ✓, Session 4 TESTING)
+## PART 2: FINISH SHEET v1.2 (Session 5 — COMPLETED ✓)
 
 ### Overview
 
 **Integrated into main app.py** (port 5000). Replaces Sailor Scorer v1.0 front-end. Allows dual operators to record lap counts and finish times for sailors on the water in real-time.
 
 **Served at:** `http://localhost:5000/finishsheet`
-**Database:** `score.db` (merged Session 2 + Session 3 schema)
+**Database:** `score.db` (merged Session 2 + Session 3 + Session 5 schema)
 **Backend:** app.py (Flask, port 5000, debug=True)
 
 ---
 
-### v1.1 Features
+### v1.2 Features (Session 5 Enhancements)
 
-#### 1. Four-Column Sailor Display
+#### 1. Dynamic Column Sailor Display
 
 **Layout:**
-- Column 1: Largest class (e.g., Ilca 6 — 14 sailors)
-- Column 2: Second class (e.g., Starling — 4 sailors)
-- Column 3: Third class (e.g., Optimist — 3 sailors)
-- Column 4: "Open" (remaining classes — 6 sailors: Ilca 7, P, Zephyr)
+- **Unlimited columns**: Automatically adapts to number of start sequences + classes
+- **Sequence-aware**: Columns grouped by start sequence (Start 1, Start 2, etc.)
+- **Empty columns**: Shows columns for classes in sequence even with zero sailors
+- **Open Category**: Trailing column for sailors with classes not in any sequence
 
-**Sailor grouping logic:**
-1. Query `/api/sailors-for-onwater` (when no active race, returns all 27 sailors)
-2. Group by boat_class
-3. Sort groups by count descending (largest first)
-4. Assign top 3 to Columns 1–3, remainder to "Open" (Column 4)
+**Sailor grouping logic (v1.2):**
+1. Query `/api/sailors-for-onwater` (sequence-aware)
+2. Create empty groups for all classes in Flag Machine sequence
+3. Group sailors by (class_id + sequence_number) composite key
+4. Sort by sequence_number first, then sailor count descending
+5. Show all sequence groups + Open Category
 
-**Sailors per class (Session 4 test data):**
-- Ilca 6: 14 sailors
-- Starling: 4 sailors
-- Optimist: 3 sailors
-- Ilca 7: 2 sailors
-- P: 1 sailor
-- Zephyr: 3 sailors
-- **Total: 27 sailors**
+**Sailors per class (current test data):**
+- Database: 64 sailors across 12 boat classes
+- Dynamic: Varies based on racing_today selection and Flag Machine sequences
+- **Total in DB: 64 sailors, 12 boat classes**
 
 #### 2. Sailor Card Display
 
@@ -191,6 +189,35 @@
 4. Disable End button, re-enable Start button
 5. Stop elapsed time polling
 6. Data persisted in `race_sailors` + `lap_records` tables
+
+---
+
+### v1.2 API Endpoints (Session 5 Additions)
+
+**New endpoints:**
+```
+GET  /api/lap-times/<uid>          # Get lap times for a specific sailor
+```
+
+**Modified endpoints:**
+```
+POST /api/class-start              # Added: sequence_number parameter
+GET  /api/sailors-for-onwater      # Enhanced: sequence-aware grouping, empty columns
+GET  /api/export-race-csv         # Enhanced: sequence_number and lap_times columns
+```
+
+### v1.2 Database Schema (Session 5 Additions)
+
+**New column:**
+```sql
+-- Added to race_class_starts table
+ALTER TABLE race_class_starts ADD COLUMN sequence_number INTEGER DEFAULT 1
+```
+
+**Modified behavior:**
+- `race_class_starts` now stores sequence_number from Flag Machine grid_index
+- `/api/sailors-for-onwater` uses sequence_number for grouping
+- Lap times stored in existing `lap_records` table with timestamps
 
 ---
 

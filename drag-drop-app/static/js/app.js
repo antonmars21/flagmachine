@@ -1,5 +1,11 @@
-// app.js - Fresh build matching current index.html structure
+// app.js - Dynamic start sequences support
 const state = { isRunning: false, raceStartTime: null, sequence: [], masterStartTime: "11:30" };
+
+// Grid color classes for dynamic grids
+const gridColorClasses = [
+    'grid-primary', 'grid-secondary', 'grid-tertiary', 'grid-quaternary',
+    'grid-quinary', 'grid-senary', 'grid-septenary', 'grid-octonary'
+];
 
 // Refresh Sailwave data from boat_master.json
 async function refreshSailwaveData() {
@@ -34,6 +40,157 @@ async function refreshSailwaveData() {
     }
 }
 
+function getNextGridColorClass(currentGridCount) {
+    return gridColorClasses[currentGridCount % gridColorClasses.length];
+}
+
+function getGridIndexFromColorClass(colorClass) {
+    const index = gridColorClasses.indexOf(colorClass);
+    return index >= 0 ? index + 1 : 1;
+}
+
+function createGrid(gridIndex) {
+    const container = document.getElementById('event-grids-container');
+    const colorClass = getNextGridColorClass(gridIndex - 1);
+    
+    const grid = document.createElement('div');
+    grid.className = `event-grid ${colorClass}`;
+    grid.dataset.gridIndex = gridIndex;
+    grid.id = `event-grid-${gridIndex}`;
+    
+    grid.innerHTML = `
+        <div class="event-grid-header">
+            <h3>Start ${gridIndex}</h3>
+            <div class="grid-meta">
+                <span class="grid-countdown-label">Total Countdown: </span>
+                <span class="grid-timer" id="timer-grid-${gridIndex}">00:00</span>
+            </div>
+            <button class="btn-remove-grid" data-grid-index="${gridIndex}" title="Remove Start Sequence">✕</button>
+        </div>
+        <div class="flag-drop-zone" id="drop-zone-${gridIndex}" data-grid-index="${gridIndex}"></div>
+    `;
+    
+    container.appendChild(grid);
+    
+    // Add event listeners for the new grid's drop zone and remove button
+    const dropZone = grid.querySelector('.flag-drop-zone');
+    setupDropZone(dropZone);
+    
+    const removeBtn = grid.querySelector('.btn-remove-grid');
+    removeBtn.addEventListener('click', () => {
+        if (state.isRunning) {
+            alert('Cannot remove grids while race is running');
+            return;
+        }
+        removeGrid(gridIndex);
+    });
+    
+    return grid;
+}
+
+function removeGrid(gridIndex) {
+    const grid = document.getElementById(`event-grid-${gridIndex}`);
+    const dropZone = document.getElementById(`drop-zone-${gridIndex}`);
+    
+    if (grid && dropZone) {
+        // Remove all rows in this grid's drop zone
+        const rows = dropZone.querySelectorAll('.event-row');
+        rows.forEach(row => {
+            const rowId = row.id;
+            state.sequence = state.sequence.filter(s => s.id !== rowId);
+        });
+        
+        // Remove the grid and drop zone
+        grid.remove();
+        
+        // Renumber remaining grids if needed (optional - could keep original numbering)
+        updateGridNumbering();
+        
+        syncToServer();
+    }
+}
+
+function updateGridNumbering() {
+    // Re-number all grids to maintain sequential numbering
+    const grids = document.querySelectorAll('.event-grid');
+    grids.forEach((grid, index) => {
+        const newIndex = index + 1;
+        grid.dataset.gridIndex = newIndex;
+        grid.id = `event-grid-${newIndex}`;
+        
+        const header = grid.querySelector('.event-grid-header h3');
+        if (header) header.textContent = `Start ${newIndex}`;
+        
+        const dropZone = grid.querySelector('.flag-drop-zone');
+        if (dropZone) {
+            dropZone.id = `drop-zone-${newIndex}`;
+            dropZone.dataset.gridIndex = newIndex;
+        }
+        
+        const timer = grid.querySelector('.grid-timer');
+        if (timer) timer.id = `timer-grid-${newIndex}`;
+        
+        const removeBtn = grid.querySelector('.btn-remove-grid');
+        if (removeBtn) {
+            removeBtn.dataset.gridIndex = newIndex;
+            removeBtn.addEventListener('click', () => {
+                if (state.isRunning) {
+                    alert('Cannot remove grids while race is running');
+                    return;
+                }
+                removeGrid(newIndex);
+            });
+        }
+        
+        // Update sequence items with new grid index
+        state.sequence.forEach(item => {
+            if (item.grid_index === index + 1) { // This might need adjustment based on old index
+                // Keep this simple for now - grid index management will be handled during countdown
+            }
+        });
+    });
+}
+
+function getCurrentGridCount() {
+    return document.querySelectorAll('.event-grid').length;
+}
+
+function setupDropZone(dropZone) {
+    if (!dropZone) return;
+    
+    dropZone.addEventListener('dragover', e => {
+        if (state.isRunning) return;
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#e8f5e9';
+        dropZone.style.borderColor = '#4caf50';
+    });
+    
+    dropZone.addEventListener('dragleave', e => {
+        if (e.target === dropZone) {
+            dropZone.style.backgroundColor = '#ffffff';
+            dropZone.style.borderColor = '#bbb';
+        }
+    });
+    
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        if (state.isRunning) return;
+        dropZone.style.backgroundColor = '#ffffff';
+        dropZone.style.borderColor = '#bbb';
+        const data = JSON.parse(e.dataTransfer.getData('card-data'));
+        const gridIndex = parseInt(dropZone.dataset.gridIndex) || 1;
+        const rowId = 'row_' + Date.now();
+        const row = createRow(rowId, data, gridIndex);
+        dropZone.appendChild(row);
+        state.sequence.push({
+            id: rowId, label: data.label, flag_image: data.flag, secondary_flag_image: null,
+            countdown_minutes: data.minutes, status: 'PENDING', grid_index: gridIndex,
+            current_remaining_seconds: data.minutes * 60
+        });
+        syncToServer();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Add refresh button handler
     const refreshBtn = document.getElementById('btn-refresh-sailwave');
@@ -41,6 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshBtn.addEventListener('click', refreshSailwaveData);
     }
     
+    // Set up existing library cards for dragging
     document.querySelectorAll('.library-card').forEach(card => {
         card.addEventListener('dragstart', e => {
             if (state.isRunning) { e.preventDefault(); return; }
@@ -51,35 +209,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Set up existing drop zones
     document.querySelectorAll('.flag-drop-zone').forEach(zone => {
-        zone.addEventListener('dragover', e => {
-            if (state.isRunning) return;
-            e.preventDefault();
-            zone.style.backgroundColor = '#e8f5e9';
-            zone.style.borderColor = '#4caf50';
-        });
-        zone.addEventListener('dragleave', e => {
-            if (e.target === zone) {
-                zone.style.backgroundColor = '#ffffff';
-                zone.style.borderColor = '#bbb';
+        setupDropZone(zone);
+    });
+
+    // Add button for creating new grids
+    const addGridBtn = document.getElementById('btn-add-grid');
+    if (addGridBtn) {
+        addGridBtn.addEventListener('click', () => {
+            if (state.isRunning) {
+                alert('Cannot add grids while race is running');
+                return;
             }
+            const nextIndex = getCurrentGridCount() + 1;
+            createGrid(nextIndex);
         });
-        zone.addEventListener('drop', e => {
-            e.preventDefault();
-            if (state.isRunning) return;
-            zone.style.backgroundColor = '#ffffff';
-            zone.style.borderColor = '#bbb';
-            const data = JSON.parse(e.dataTransfer.getData('card-data'));
-            const gridIndex = zone.dataset.gridIndex || 1;
-            const rowId = 'row_' + Date.now();
-            const row = createRow(rowId, data, gridIndex);
-            zone.appendChild(row);
-            state.sequence.push({
-                id: rowId, label: data.label, flag_image: data.flag, secondary_flag_image: null,
-                countdown_minutes: data.minutes, status: 'PENDING', grid_index: parseInt(gridIndex),
-                current_remaining_seconds: data.minutes * 60
-            });
-            syncToServer();
+    }
+
+    // Set up remove buttons for existing grids
+    document.querySelectorAll('.btn-remove-grid').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (state.isRunning) {
+                alert('Cannot remove grids while race is running');
+                return;
+            }
+            const gridIndex = parseInt(btn.dataset.gridIndex);
+            removeGrid(gridIndex);
         });
     });
 
@@ -303,9 +459,9 @@ function updateCountdown() {
             // Countdown hit 00:00 for this flag's class -> notify Finish Sheet.
             // If a secondary flag is also present (multiple classes starting in the same slot),
             // fire a class-start for that class too.
-            fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.flag_image }) }).catch(console.error);
+            fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.flag_image, sequence_number: it.grid_index }) }).catch(console.error);
             if (it.secondary_flag_image) {
-                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.secondary_flag_image }) }).catch(console.error);
+                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.secondary_flag_image, sequence_number: it.grid_index }) }).catch(console.error);
             }
         }
         const re = document.getElementById(it.id);
@@ -355,6 +511,13 @@ function lockUI(lk) {
         if (rb) { rb.style.opacity = lk ? '0.3' : '0.7'; rb.disabled = lk; }
         if (ri) { ri.disabled = lk; ri.style.cursor = lk ? 'not-allowed' : 'text'; }
         r.draggable = !lk;
+    });
+    // Also disable add/remove grid buttons when locked
+    const addBtn = document.getElementById('btn-add-grid');
+    if (addBtn) addBtn.disabled = lk;
+    document.querySelectorAll('.btn-remove-grid').forEach(btn => {
+        btn.disabled = lk;
+        btn.style.opacity = lk ? '0.3' : '0.7';
     });
 }
 

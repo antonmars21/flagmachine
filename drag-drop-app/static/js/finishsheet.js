@@ -127,8 +127,10 @@ function renderColumns(columns) {
         const header = document.createElement('div');
         header.className = 'column-header';
         header.style.borderBottom = `3px solid ${colData.color_hex || '#334155'}`;
+        const sequenceNumber = colData.sequence_number || 0;
+        const sequenceLabel = sequenceNumber > 0 ? `Start ${sequenceNumber}: ` : '';
         header.innerHTML = `
-            <div class="column-title" style="color: ${colData.color_hex || '#f8fafc'}">${colData.class_name}</div>
+            <div class="column-title" style="color: ${colData.color_hex || '#f8fafc'}">${sequenceLabel}${colData.class_name}</div>
             <div class="column-count">${sailors.length} sailors</div>
         `;
         column_div.appendChild(header);

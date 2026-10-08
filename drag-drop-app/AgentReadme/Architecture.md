@@ -1,6 +1,6 @@
 # Flag Machine + Finish Sheet — Session 5 Architecture
 
-**Status**: Session 5 complete (Obj 1, 2, 3 delivered). See `SESSION6_PLAN.md` for handoff/known bugs.
+**Status**: Session 5 complete - Dynamic Start Sequences implemented. See `SESSION5_COMPLETED.md` for full details.
 
 ---
 
@@ -20,6 +20,10 @@ Single Flask app (`app.py`, port 5000, debug=True) serving both Flag Machine (`/
 - **Sailor registry sidebar** (reinstated from old score.py/score.html): slide-out panel on `/finishsheet` — search, racing-today checkbox (sign-on for today), add/edit/delete. Endpoints: `/api/sailors-registry`, `/api/toggle-racing`, `/api/add-sailor`, `/api/edit-sailor/<uid>`, `/api/delete-sailor/<uid>`.
 - **Sailor card behavior**: lap/finish controls disabled until that sailor's class has started (enforced server-side in `/api/record-lap` and `/api/mark-finish`, not just UI); amber glow (`class-started`) matches Flag Machine's active countdown color. Auto-sort by lap_count desc/seed asc; finishing always drops a sailor to the bottom (by finish time), overriding manual drag placement.
 - **CSV export**: `/api/export-race-csv` downloads Class, Sailor, SailNo, StartTime, Laps, FinishTime, RaceEndTime for the current/last race.
+- **Dynamic start sequences**: `/api/class-start` now accepts `sequence_number` parameter, stored in `race_class_starts.sequence_number` for grouping results by start sequence.
+- **Enhanced CSV export**: Now includes Sequence and Lap Times columns with full timestamp data.
+- **Lap times API**: `/api/lap-times/<uid>` endpoint to retrieve individual lap timestamps.
+- **Sequence-aware finish sheet**: `/api/sailors-for-onwater` groups sailors by (class_id + sequence_number) to create separate columns for each start sequence.
 
 ### Deprecated
 `score.py` (port 5001) front-end fully decommissioned; its registry UI/UX was ported into the Finish Sheet sidebar (see above). `score.db` schema preserved.
@@ -35,13 +39,13 @@ score.db                   SQLite DB (sailors, boat_classes, races, race_sailors
 migrate_boat_classes.py    One-off migration script (safe to delete once stable)
 
 templates/
-  index.html               Flag Machine control panel (Start 1 / Start 2 grids)
+  index.html               Flag Machine control panel (dynamic N grids via "+" button)
   display.html             Outdoor display board
-  finishsheet.html         Finish Sheet UI + registry sidebar markup
+  finishsheet.html         Finish Sheet UI + registry sidebar markup (dynamic columns)
 
 static/js/
-  app.js                   Flag Machine engine (sequential countdown, class-start POST)
-  finishsheet.js           Finish Sheet engine (dynamic columns, registry sidebar,
+  app.js                   Flag Machine engine (sequential countdown, class-start POST, dynamic grid management)
+  finishsheet.js           Finish Sheet engine (dynamic columns, registry sidebar, sequence display,
                            sort/finish-drop, polling)
 static/css/
   style.css                Flag Machine + shared styles
@@ -57,8 +61,10 @@ static/css/
 | POST | `/api/end-race` | Freeze timer, record end_time (idempotent) |
 | POST | `/api/reset-race` | Zero all race/timer state back to READY |
 | GET | `/api/export-race-csv` | Download race results CSV |
-| GET | `/api/sailors-for-onwater` | Dynamic columns for Finish Sheet |
+| GET | `/api/sailors-for-onwater` | Dynamic columns for Finish Sheet (sequence-aware) |
 | GET | `/api/sailors-registry` | Full fleet list w/ racing_today |
+| GET | `/api/lap-times/<uid>` | Get lap timestamps for a sailor |
+| POST | `/api/class-start` | Class start with sequence_number |
 | POST | `/api/toggle-racing` | Sign a sailor on/off for today |
 | POST/PUT/DELETE | `/api/add-sailor`, `/api/edit-sailor/<uid>`, `/api/delete-sailor/<uid>` | Registry management |
 
