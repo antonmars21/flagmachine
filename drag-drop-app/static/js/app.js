@@ -142,10 +142,11 @@ function updateGridNumbering() {
             });
         }
         
-        // Update sequence items with new grid index
+        // Update sequence items that live in this grid to the new index,
+        // so class-start reports the same Start number as shown here
         state.sequence.forEach(item => {
-            if (item.grid_index === index + 1) { // This might need adjustment based on old index
-                // Keep this simple for now - grid index management will be handled during countdown
+            if (grid.querySelector('#' + item.id)) {
+                item.grid_index = newIndex;
             }
         });
     });

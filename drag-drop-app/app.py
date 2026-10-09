@@ -3,14 +3,79 @@ Session 4: Finish Sheet v1.1 - Race Officer Control + Sailor Tracking
 Runs on localhost:5000 with Flag Machine and Finish Sheet integrated
 """
 import os
+import re
+import json
 import sqlite3
+import threading
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
+# ==================== TEST RECORDING (bug reproduction) ====================
+# Records the API calls produced by UI button clicks so a race-day session can
+# be replayed instantly (scripts/replay_race.py) without waiting for countdowns.
+# Toggle from the browser:
+#   start: http://localhost:5000/api/test/record?action=start
+#   stop:  http://localhost:5000/api/test/record?action=stop
+RECORDING_DIR = os.path.join(os.path.dirname(__file__), 'tempref')
+RECORDING_PATH = os.path.join(RECORDING_DIR, 'recording.jsonl')
+RECORD_NOISE = {
+    '/api/display-state', '/api/race-status', '/api/get-elapsed-time',
+    '/api/sailors-registry', '/api/sailors-for-onwater',
+    '/api/refresh-sailwave-status', '/api/test/record',
+    '/update-status', '/update-live-timer',  # 100ms countdown pollers
+}
+recording_state = {'active': False}
+recording_lock = threading.Lock()
+
+@app.before_request
+def _capture_request():
+    """Grab the raw request body while it's still readable (for recording)."""
+    if recording_state['active'] and request.path not in RECORD_NOISE \
+            and not request.path.startswith('/static'):
+        request._record_body = request.get_data(as_text=True)
+    return None
+
+@app.after_request
+def _log_recorded_request(response):
+    """Append each captured request to the recording as one JSON line."""
+    if recording_state['active'] and getattr(request, '_record_body', None) is not None:
+        try:
+            with recording_lock:  # dev server is threaded - serialize appends
+                with open(RECORDING_PATH, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({
+                        't': datetime.now().isoformat(),
+                        'method': request.method,
+                        'path': request.path,
+                        'body': request._record_body,
+                        'status': response.status_code,
+                    }) + '\n')
+        except OSError:
+            pass
+    return response
+
+@app.route('/api/test/record')
+def test_record_toggle():
+    """Start/stop recording of UI API calls (for instant replay later)."""
+    action = request.args.get('action', 'status')
+    if action == 'start':
+        os.makedirs(RECORDING_DIR, exist_ok=True)
+        with open(RECORDING_PATH, 'w', encoding='utf-8') as f:
+            pass  # truncate for a fresh recording
+        recording_state['active'] = True
+        return jsonify({"status": "recording", "path": RECORDING_PATH})
+    if action == 'stop':
+        recording_state['active'] = False
+        return jsonify({"status": "stopped", "path": RECORDING_PATH})
+    return jsonify({
+        "status": "recording" if recording_state['active'] else "idle",
+        "path": RECORDING_PATH,
+    })
+
 DB_PATH = 'score.db'
 FLAGS_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'flags')
+SAILWAVE_DB_FOLDER = r'C:\Users\Public\Documents\Sailwave\Flagmachine_database'
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -100,6 +165,80 @@ def init_finishsheet_tables():
     conn.close()
 
 init_finishsheet_tables()
+
+def reconcile_sailor_class_ids():
+    """Re-sync sailors.class_id with boat_classes, matched by boat_class name
+    (case-insensitive). Fixes stale class_id values (e.g. left behind by an
+    older Sailwave import) that would otherwise place sailors in the wrong
+    finish-sheet class column. Sailors whose boat_class has no matching
+    boat class get class_id NULL, which groups them into the Open Category.
+    Idempotent - only updates rows where class_id currently disagrees."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        UPDATE sailors
+        SET class_id = (
+            SELECT bc.class_id FROM boat_classes bc
+            WHERE LOWER(bc.class_name) = LOWER(sailors.boat_class)
+        )
+        WHERE class_id IS NOT (
+            SELECT bc.class_id FROM boat_classes bc
+            WHERE LOWER(bc.class_name) = LOWER(sailors.boat_class)
+        )
+    ''')
+    fixed = c.rowcount
+    conn.commit()
+    conn.close()
+    if fixed:
+        print(f"[registry] Reconciled class_id for {fixed} sailor(s)")
+
+reconcile_sailor_class_ids()
+
+# Some classes are known by a different flag filename than their class name
+FLAG_NAME_ALIASES = {
+    '37': 'farr3point7.png',  # '3.7' class -> Farr 3.7 flag
+}
+
+def reconcile_class_flag_images():
+    """Scan static/flags at startup and repair boat_classes.flag_image.
+    For each boat class whose flag_image is NULL or does not exactly match
+    a file in the flags folder, try to find an image whose name matches the
+    class name (normalized: lowercase, ignore spaces/punctuation).
+    Classes with no matching image keep flag_image NULL - their sailors
+    group into the Open Category until a flag is added."""
+    if not os.path.exists(FLAGS_FOLDER):
+        return
+    valid_ext = ('.png', '.jpg', '.jpeg', '.svg')
+    files = [f for f in os.listdir(FLAGS_FOLDER) if f.lower().endswith(valid_ext)]
+    if not files:
+        return
+
+    def norm(s):
+        return re.sub(r'[^a-z0-9]', '', s.lower())
+
+    files_by_norm = {norm(os.path.splitext(f)[0]): f for f in files}
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT class_id, class_name, flag_image FROM boat_classes')
+    fixed = 0
+    for row in c.fetchall():
+        fi = row['flag_image']
+        if fi and fi in files:
+            continue  # current flag exists on disk - leave it alone
+        key = norm(row['class_name'])
+        match = files_by_norm.get(key) or FLAG_NAME_ALIASES.get(key)
+        if match:
+            c.execute('UPDATE boat_classes SET flag_image = ? WHERE class_id = ?',
+                      (match, row['class_id']))
+            fixed += 1
+            print(f"[flags] {row['class_name']}: flag_image -> {match}")
+    conn.commit()
+    conn.close()
+    if fixed:
+        print(f"[flags] Repaired flag images for {fixed} class(es)")
+
+reconcile_class_flag_images()
 
 def get_dynamic_asset_library():
     assets = []
@@ -465,7 +604,8 @@ def sailors_for_onwater():
             'flag_image': row['flag_image'],
             'color_hex': row['color_hex'],
             'class_started': start_time is not None,
-            'class_start_time': start_time
+            'class_start_time': start_time,
+            'open_category': False
         }
         
         # Get sequence number for this class
@@ -477,6 +617,7 @@ def sailors_for_onwater():
         # Determine if this sailor should be in a class column or open category
         # If class_id is None, always go to open category
         if class_id is None:
+            sailor_dict['open_category'] = True
             open_category_sailors.append(sailor_dict)
         # If there are active classes in the sequence, only include classes that are in the sequence
         elif active_class_ids and class_id in active_class_ids:
@@ -508,6 +649,7 @@ def sailors_for_onwater():
             sequence_groups[group_key]['sailors'].append(sailor_dict)
         else:
             # Class exists but not in current sequence - goes to open category
+            sailor_dict['open_category'] = True
             open_category_sailors.append(sailor_dict)
     
     # Order sequence-class columns: by sequence number first, then by sailor count (most on left within same sequence)
@@ -891,11 +1033,11 @@ def export_race_csv():
         ORDER BY rcs.sequence_number, bc.class_name, s.sail_no
     ''', (race_id,))
     rows = c.fetchall()
-    conn.close()
     
     # Get lap times for all sailors in this race
     c.execute('SELECT uid, lap_number, timestamp FROM lap_records WHERE race_id = ? ORDER BY uid, lap_number', (race_id,))
     lap_records = c.fetchall()
+    conn.close()
     
     # Organize lap times by uid
     lap_times_by_uid = {}
@@ -953,15 +1095,28 @@ def record_lap():
         conn.close()
         return jsonify({"status": "error", "message": "Race has ended"}), 400
     
-    # Enforce: sailor's class must have started
+    # Enforce: sailor's class must have started. Open-category sailors
+    # (class not in the current Flag Machine sequence) are exempt - the
+    # race start is their start.
     c.execute('SELECT class_id FROM sailors WHERE uid = ?', (uid,))
     srow = c.fetchone()
     class_id = srow['class_id'] if srow else None
-    if class_id is None or str(class_id) not in app_state.get('class_start_times', {}):
+    active_class_ids = get_active_class_ids_from_sequence()
+    class_in_sequence = class_id is not None and class_id in active_class_ids
+    if class_in_sequence and str(class_id) not in app_state.get('class_start_times', {}):
         conn.close()
         return jsonify({"status": "error", "message": "Class has not started yet"}), 400
     
     try:
+        # Ensure the sailor belongs to this race (open-category sailors are
+        # not locked in by any class start, so join them on first interaction)
+        c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
+        if not c.fetchone():
+            c.execute('''
+                INSERT INTO race_sailors (race_id, uid, lap_count, placement)
+                VALUES (?, ?, 0, NULL)
+            ''', (race_id, uid))
+
         # Increment lap count
         c.execute('''
             UPDATE race_sailors
@@ -1006,15 +1161,28 @@ def mark_finish():
         conn.close()
         return jsonify({"status": "error", "message": "Race has ended"}), 400
     
-    # Enforce: sailor's class must have started
+    # Enforce: sailor's class must have started. Open-category sailors
+    # (class not in the current Flag Machine sequence) are exempt - the
+    # race start is their start.
     c.execute('SELECT class_id FROM sailors WHERE uid = ?', (uid,))
     srow = c.fetchone()
     class_id = srow['class_id'] if srow else None
-    if class_id is None or str(class_id) not in app_state.get('class_start_times', {}):
+    active_class_ids = get_active_class_ids_from_sequence()
+    class_in_sequence = class_id is not None and class_id in active_class_ids
+    if class_in_sequence and str(class_id) not in app_state.get('class_start_times', {}):
         conn.close()
         return jsonify({"status": "error", "message": "Class has not started yet"}), 400
     
     try:
+        # Ensure the sailor belongs to this race (open-category sailors are
+        # not locked in by any class start, so join them on first interaction)
+        c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
+        if not c.fetchone():
+            c.execute('''
+                INSERT INTO race_sailors (race_id, uid, lap_count, placement)
+                VALUES (?, ?, 0, NULL)
+            ''', (race_id, uid))
+
         finish_time = datetime.now().isoformat()
         c.execute('''
             UPDATE race_sailors
@@ -1068,12 +1236,27 @@ def get_elapsed_time():
 
 # ==================== SAILWAVE INTEGRATION ====================
 
+def find_sailwave_source():
+    """Locate the Sailwave Boats_Master.xml source file.
+    Prefer the Sailwave database folder; fall back to tempref/."""
+    candidates = [
+        os.path.join(SAILWAVE_DB_FOLDER, 'Boats_Master.xml'),
+        os.path.join(SAILWAVE_DB_FOLDER, 'boat_master.xml'),
+        os.path.join(os.path.dirname(__file__), 'tempref', 'Boats_Master.xml'),
+        os.path.join(os.path.dirname(__file__), 'tempref', 'boat_master.xml'),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
 @app.route('/api/refresh-sailwave', methods=['POST'])
 def refresh_sailwave():
     """
-    Import/refresh sailor and boat class data from Sailwave boat_master.json.
+    Import/refresh sailor and boat class data from Sailwave Boats_Master.xml.
     
-    This endpoint triggers the import script to read from boat_master.json
+    This endpoint triggers the import script to read from Boats_Master.xml
     and update the score.db with the latest data from Sailwave.
     
     Returns:
@@ -1092,19 +1275,19 @@ def refresh_sailwave():
             "message": f"Import script not found: {script_path}"
         }), 404
     
-    # Check if boat_master.json exists
-    json_path = os.path.join(os.path.dirname(__file__), 'tempref', 'boat_master.json')
-    if not os.path.exists(json_path):
+    # Locate the Sailwave XML source file (public folder first, then tempref)
+    xml_path = find_sailwave_source()
+    if not xml_path:
         return jsonify({
             "status": "error",
-            "message": f"boat_master.json not found: {json_path}. "
-                       f"Please copy it from Sailwave to the tempref/ folder."
+            "message": f"No Boats_Master.xml found in {SAILWAVE_DB_FOLDER} "
+                       f"or the tempref/ folder."
         }), 404
     
     try:
-        # Run the import script
+        # Run the import script against the located source file
         result = subprocess.run(
-            [sys.executable, script_path],
+            [sys.executable, script_path, '--xml-path', xml_path],
             capture_output=True,
             text=True,
             cwd=os.path.dirname(__file__)
@@ -1159,27 +1342,27 @@ def refresh_sailwave():
 @app.route('/api/refresh-sailwave-status', methods=['GET'])
 def refresh_sailwave_status():
     """
-    Check if boat_master.json is available for import.
+    Check if Boats_Master.xml is available for import.
     
     Returns:
         {"status": "available" or "not_found", "path": "..."}
     """
-    json_path = os.path.join(os.path.dirname(__file__), 'tempref', 'boat_master.json')
+    xml_path = find_sailwave_source()
     
-    if os.path.exists(json_path):
+    if xml_path:
         # Get file info
-        stat = os.stat(json_path)
+        stat = os.stat(xml_path)
         return jsonify({
             "status": "available",
-            "path": json_path,
+            "path": xml_path,
             "size": stat.st_size,
             "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
         })
     else:
         return jsonify({
             "status": "not_found",
-            "path": json_path,
-            "message": "boat_master.json not found. Please copy from Sailwave."
+            "path": SAILWAVE_DB_FOLDER,
+            "message": "Boats_Master.xml not found in the Sailwave database folder or tempref/."
         })
 
 

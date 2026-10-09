@@ -1,0 +1,15 @@
+{"t": "2026-10-09T23:40:43.174991", "method": "POST", "path": "/update-sequence", "body": "{\"sequence\":[{\"id\":\"row_1791541164172\",\"label\":\"Ilca6\",\"flag_image\":\"ilca6.png\",\"secondary_flag_image\":null,\"countdown_minutes\":1,\"status\":\"ACTIVE\",\"grid_index\":1,\"current_remaining_seconds\":60},{\"id\":\"row_1791541168672\",\"label\":\"Pclass\",\"flag_image\":\"pclass.jpg\",\"secondary_flag_image\":null,\"countdown_minutes\":1,\"status\":\"PENDING\",\"grid_index\":2,\"current_remaining_seconds\":60},{\"id\":\"row_1791541178396\",\"label\":\"Starling\",\"flag_image\":\"Starling.png\",\"secondary_flag_image\":null,\"countdown_minutes\":1,\"status\":\"PENDING\",\"grid_index\":3,\"current_remaining_seconds\":60}]}", "status": 200}
+{"t": "2026-10-09T23:40:43.179443", "method": "POST", "path": "/execute-control", "body": "{\"action\":\"START\"}", "status": 200}
+{"t": "2026-10-09T23:40:54.395731", "method": "POST", "path": "/api/reset-finish-sheet", "body": "", "status": 200}
+{"t": "2026-10-09T23:41:44.141366", "method": "POST", "path": "/api/class-start", "body": "{\"flag_image\":\"ilca6.png\",\"sequence_number\":1}", "status": 200}
+{"t": "2026-10-09T23:41:51.968579", "method": "POST", "path": "/api/toggle-racing", "body": "{\"uid\":\"SL-308\",\"racing_today\":true}", "status": 200}
+{"t": "2026-10-09T23:42:09.705129", "method": "POST", "path": "/api/toggle-racing", "body": "{\"uid\":\"SL-12\",\"racing_today\":true}", "status": 200}
+{"t": "2026-10-09T23:42:21.306875", "method": "POST", "path": "/api/record-lap", "body": "{\"uid\":\"SL-15\"}", "status": 200}
+{"t": "2026-10-09T23:42:23.643163", "method": "POST", "path": "/api/record-lap", "body": "{\"uid\":\"SL-148917\"}", "status": 200}
+{"t": "2026-10-09T23:42:51.895700", "method": "POST", "path": "/api/class-start", "body": "{\"flag_image\":\"pclass.jpg\",\"sequence_number\":2}", "status": 200}
+{"t": "2026-10-09T23:42:58.741625", "method": "GET", "path": "/finishsheet", "body": "", "status": 200}
+{"t": "2026-10-09T23:43:14.506075", "method": "POST", "path": "/api/toggle-racing", "body": "{\"uid\":\"SL-177\",\"racing_today\":true}", "status": 200}
+{"t": "2026-10-09T23:43:44.116250", "method": "POST", "path": "/api/class-start", "body": "{\"flag_image\":\"Starling.png\",\"sequence_number\":3}", "status": 200}
+{"t": "2026-10-09T23:44:37.305866", "method": "POST", "path": "/api/record-lap", "body": "{\"uid\":\"SL-397\"}", "status": 200}
+{"t": "2026-10-09T23:44:41.101085", "method": "POST", "path": "/api/record-lap", "body": "{\"uid\":\"SL-1091\"}", "status": 200}
+{"t": "2026-10-09T23:44:42.700718", "method": "POST", "path": "/api/record-lap", "body": "{\"uid\":\"SL-1140\"}", "status": 200}

@@ -172,6 +172,9 @@ function createSailorCard(sailor, col_num, index) {
     
     const finished_class = sailor.finish_time ? ' (Finished)' : '';
     const class_started = !!sailor.class_started;
+    // Open-category sailors (no class in the countdown) record laps/finishes
+    // against the race start rather than a class start
+    const can_record = class_started || !!sailor.open_category;
     if (class_started) card.classList.add('class-started');
     
     card.innerHTML = `
@@ -182,11 +185,11 @@ function createSailorCard(sailor, col_num, index) {
         <div class="sailor-nickname">${sailor.short_name}${finished_class}</div>
         <div class="sailor-controls">
             <div class="lap-counter">
-                <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${class_started ? '' : 'disabled'}>+ Lap</button>
+                <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${can_record ? '' : 'disabled'}>+ Lap</button>
                 <div class="lap-value">${sailor.lap_count || 0}</div>
             </div>
             <input type="checkbox" class="finish-checkbox" data-uid="${sailor.uid}" 
-                ${sailor.finish_time ? 'checked disabled' : (class_started ? '' : 'disabled')}>
+                ${sailor.finish_time ? 'checked disabled' : (can_record ? '' : 'disabled')}>
         </div>
     `;
     
@@ -604,7 +607,6 @@ async function initRegistrySidebar() {
     // Clear All Checkboxes button
     if (btnClearRegistry) {
         btnClearRegistry.addEventListener('click', () => {
-            if (!confirm('Clear all checkboxes in the registry?\nAll sailors will be unchecked from Racing Today.')) return;
             fetch('/api/clear-registry', { method: 'POST' })
                 .then(res => {
                     if (res.ok) {
@@ -737,6 +739,14 @@ function applyRegistryFilters() {
                 const sailA = (a.dataset.sailNo || a.querySelector('.sailor-sail')?.textContent || "").replace(/[^\d]/g, '').toLowerCase();
                 const sailB = (b.dataset.sailNo || b.querySelector('.sailor-sail')?.textContent || "").replace(/[^\d]/g, '').toLowerCase();
                 return sailA.localeCompare(sailB);
+            } else if (sortBy === "class") {
+                const classA = (a.dataset.boatClass || "").toLowerCase();
+                const classB = (b.dataset.boatClass || "").toLowerCase();
+                const cmp = classA.localeCompare(classB);
+                if (cmp !== 0) return cmp;
+                const nameA = (a.dataset.shortName || "").toLowerCase();
+                const nameB = (b.dataset.shortName || "").toLowerCase();
+                return nameA.localeCompare(nameB);
             }
             return 0;
         });

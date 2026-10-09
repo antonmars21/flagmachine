@@ -28,7 +28,7 @@ REM Check if Flask is installed
 if %errorlevel% neq 0 (
     echo Flask not found. Installing...
     "%PYTHON%" -m pip install Flask
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo ERROR: Failed to install Flask
         pause
         exit /b 1

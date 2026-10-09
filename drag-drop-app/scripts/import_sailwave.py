@@ -1,7 +1,7 @@
 """
-Sailwave Integration: Import boat_master.json into score.db
+Sailwave Integration: Import Boats_Master.xml into score.db
 
-This script reads boat and sailor data from Sailwave's boat_master.json
+This script reads competitor data from Sailwave's Boats_Master.xml export
 and imports it into the Flag Machine's SQLite database (score.db).
 
 Features:
@@ -16,19 +16,19 @@ Usage:
     python scripts/import_sailwave.py
     
     or with custom path:
-    python scripts/import_sailwave.py --json-path /path/to/boat_master.json
+    python scripts/import_sailwave.py --xml-path /path/to/Boats_Master.xml
 """
 
 import sqlite3
-import json
-import re
+import xml.etree.ElementTree as ET
 import os
 import sys
 import argparse
 from datetime import datetime
 
 # Configuration
-DEFAULT_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'tempref', 'boat_master.json')
+SAILWAVE_DB_FOLDER = r'C:\Users\Public\Documents\Sailwave\Flagmachine_database'
+DEFAULT_XML_PATH = os.path.join(SAILWAVE_DB_FOLDER, 'Boats_Master.xml')
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'score.db')
 
 # Default flag image mappings (can be overridden by data)
@@ -151,168 +151,63 @@ def ensure_tables_exist(conn):
     conn.commit()
 
 
-def parse_sailwave_json(json_path):
+def parse_sailwave_xml(xml_path):
     """
-    Parse Sailwave boat_master.json file.
-    
-    Expected structure (based on typical Sailwave exports):
-    {
-        "boats": [
-            {
-                "sail_no": "123",
-                "boat_name": "Werner",
-                "class": "Ilca 6",
-                "helm": "John Smith",
-                "crew": "Jane Doe",
-                "py": 1000,
-                "club": "ABC Yacht Club"
-            },
-            ...
-        ],
-        "classes": [
-            {
-                "class_name": "Ilca 6",
-                "py": 1000,
-                "flag": "ilca6.png"
-            },
-            ...
-        ]
-    }
-    
-    OR alternative structure:
-    [
-        {
-            "SailNo": "123",
-            "BoatName": "Werner", 
-            "Class": "Ilca 6",
-            "Helm": "John Smith",
-            "Crew": "Jane Doe",
-            "PY": 1000
-        },
-        ...
-    ]
+    Parse a Sailwave Boats_Master.xml export.
+
+    Expected structure:
+    <sailwave-data>
+      <header>...</header>
+      <competitors>
+        <competitor handle="111">
+          <compboat>Philomene</compboat>
+          <compsailno>54</compsailno>
+          <compclass>Zephyr</compclass>
+          <comphelmname>Ray Oxborrow</comphelmname>
+          <comprating>4</comprating>
+          ...
+        </competitor>
+      </competitors>
+    </sailwave-data>
+
+    Returns (boats, classes). Each boat is a dict keyed by child tag name,
+    which extract_boat_info maps onto sailor fields. Strict XML: a malformed
+    file raises a ParseError instead of being silently patched up.
     """
     print(f"\n{'='*60}")
-    print(f"PARSING: {json_path}")
+    print(f"PARSING: {xml_path}")
     print(f"{'='*60}")
-    
-    if not os.path.exists(json_path):
-        print(f"ERROR: File not found: {json_path}")
+
+    if not os.path.exists(xml_path):
+        print(f"ERROR: File not found: {xml_path}")
         return None, None
-    
-    # Try multiple encodings for JSON files
-    encodings = ['utf-8', 'utf-16-le', 'utf-16-be', 'cp1252', 'latin-1']
-    data = None
-    
-    for encoding in encodings:
-        try:
-            with open(json_path, 'r', encoding=encoding) as f:
-                data = json.load(f)
-            print(f"  [Encoding detected: {encoding}]")
-            break
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    
-    # If JSON parsing failed, try HTML format
-    if data is None:
-        try:
-            # Try opening as HTML - first try .htm version, then original path
-            html_path = json_path
-            if json_path.endswith('.json'):
-                html_path = json_path[:-5] + '.htm'
-            
-            with open(html_path, 'rb') as f:
-                html_content = f.read()
-            
-            # Try different encodings for HTML
-            for encoding in ['ISO-8859-1', 'latin-1', 'utf-8', 'cp1252']:
-                try:
-                    html_text = html_content.decode(encoding)
-                    break
-                except:
-                    continue
-            
-            # Extract table data from HTML
-            match = re.search(r'<tbody>(.*?)</tbody>', html_text, re.DOTALL)
-            if match:
-                tbody = match.group(1)
-                rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody, re.DOTALL)
-                
-                boats = []
-                for row in rows:
-                    cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, re.DOTALL)
-                    if len(cells) >= 7:
-                        cleaned = [re.sub(r'<[^>]*>', '', c).strip() for c in cells]
-                        if len(cleaned) >= 7 and cleaned[4]:  # Has SailNo
-                            boat_data = {
-                                'sail_no': cleaned[4],
-                                'boat': cleaned[3],
-                                'class': cleaned[2],
-                                'helm': cleaned[5],
-                                'py': cleaned[6] if cleaned[6] else '1000'
-                            }
-                            boats.append(boat_data)
-                
-                print(f"  [HTML format detected: {len(boats)} boats found]")
-                return boats, []
-        except Exception as e:
-            print(f"  [HTML parsing failed: {e}]")
-    
-    if data is None:
-        print(f"ERROR: Could not decode file with encodings: {encodings}")
+
+    try:
+        tree = ET.parse(xml_path)
+    except ET.ParseError as e:
+        print(f"ERROR: XML is not well-formed: {e}")
         return None, None
-    
+
+    root = tree.getroot()
+
     boats = []
-    classes = []
-    
-    # Try to detect structure
-    if isinstance(data, dict):
-        # Structure 1: {"boats": [...], "classes": [...]}
-        if 'boats' in data:
-            boats = data['boats']
-        if 'classes' in data:
-            classes = data['classes']
-        # Structure 2: {"Boats": [...], "Classes": [...]}
-        elif 'Boats' in data:
-            boats = data['Boats']
-        if 'Classes' in data:
-            classes = data['Classes']
-        # Structure 3: Flat dict with boat list
-        else:
-            # Assume all keys are boat entries or class definitions
-            for key, value in data.items():
-                if isinstance(value, list):
-                    if key.lower() in ['boats', 'sailors', 'competitors']:
-                        boats = value
-                    elif key.lower() in ['classes', 'boat_classes']:
-                        classes = value
-                elif isinstance(value, dict) and 'class' in value.lower():
-                    classes.append(value)
-    
-    elif isinstance(data, list):
-        # Structure 4: Flat list of boats
-        # Check if first item has class info
-        if data and isinstance(data[0], dict):
-            # Could be all boats, or mixed
-            for item in data:
-                if 'class' in item or 'Class' in item or 'boat_class' in item:
-                    boats.append(item)
-                elif 'class_name' in item or 'ClassName' in item:
-                    classes.append(item)
-    
-    print(f"  Found {len(boats)} boats")
-    print(f"  Found {len(classes)} classes")
-    
-    return boats, classes
+    for comp in root.findall('./competitors/competitor'):
+        fields = {child.tag: (child.text or '').strip() for child in comp}
+        fields['handle'] = comp.get('handle')
+        boats.append(fields)
+
+    print(f"  Found {len(boats)} competitors")
+    return boats, []
 
 
 def extract_boat_info(boat):
-    """Extract standardized boat info from various JSON structures."""
+    """Extract standardized boat info from Sailwave competitor fields."""
     info = {
         'uid': None,
         'sail_no': None,
         'sailor_name': None,
         'short_name': None,
+        'helm_name': None,
         'boat_class': None,
         'handicap': 1.0,
         'py_number': None
@@ -320,39 +215,45 @@ def extract_boat_info(boat):
     
     # Handle different field naming conventions
     for key, value in boat.items():
+        # Skip empty tags (Sailwave XML exports many unused fields)
+        if value is None or not str(value).strip():
+            continue
         key_lower = key.lower()
         
-        if key_lower in ['sailno', 'sail_no', 'sailnumber', 'id']:
+        if key_lower in ['sailno', 'sail_no', 'sailnumber', 'id', 'compsailno']:
             info['sail_no'] = str(value).strip()
             info['uid'] = f"SL-{info['sail_no']}"
+        elif key_lower in ['compboat']:
+            # Sailwave competitor boat name - kept for reference only
+            info['boat_name'] = str(value).strip()
         elif key_lower in ['boatname', 'boat_name', 'name']:
             info['short_name'] = str(value).strip()
             info['sailor_name'] = info['short_name']
-        elif key_lower in ['helm', 'helmsman', 'skipper', 'sailor']:
+        elif key_lower in ['helm', 'helmsman', 'skipper', 'sailor', 'comphelmname']:
+            info['helm_name'] = str(value).strip()
             if info['sailor_name']:
                 info['sailor_name'] = f"{info['sailor_name']} ({value})"
             else:
                 info['sailor_name'] = str(value).strip()
-        elif key_lower in ['crew']:
+        elif key_lower in ['crew', 'compcrewname']:
             if info['sailor_name']:
                 info['sailor_name'] = f"{info['sailor_name']} + {value}"
-        elif key_lower in ['class', 'boat_class', 'classname', 'boatclass']:
+        elif key_lower in ['class', 'boat_class', 'classname', 'boatclass', 'compclass']:
+            # compclass holds the division (e.g. 'ILCA 6'); compfleet is the
+            # coarse fleet (e.g. 'ILCA') and is deliberately not used
             info['boat_class'] = str(value).strip()
-        elif key_lower in ['py', 'handicap', 'rating', 'pn']:
+        elif key_lower in ['py', 'handicap', 'rating', 'pn', 'comprating']:
             try:
                 info['handicap'] = float(value)
                 info['py_number'] = float(value)
             except (ValueError, TypeError):
                 pass
     
-    # Generate short_name from sailor_name if not set
-    if info['sailor_name'] and not info['short_name']:
-        # Use first word or first initial + last name
-        parts = info['sailor_name'].split()
-        if len(parts) >= 2:
-            info['short_name'] = f"{parts[0][0]}. {parts[-1]}"
-        else:
-            info['short_name'] = info['sailor_name'][:15]
+    # Use the sailor's first name as the short_name
+    name_source = info['helm_name'] or info['sailor_name']
+    if name_source:
+        parts = name_source.split()
+        info['short_name'] = parts[0] if parts else name_source[:15]
     
     # Generate UID if not set
     if not info['uid'] and info['sail_no']:
@@ -362,7 +263,7 @@ def extract_boat_info(boat):
 
 
 def extract_class_info(class_data):
-    """Extract standardized class info from various JSON structures."""
+    """Extract standardized class info from Sailwave class fields."""
     info = {
         'class_name': None,
         'flag_image': None,
@@ -582,29 +483,29 @@ def cleanup_orphaned_sailors(conn):
     print("  To remove orphans, run with --cleanup-orphans flag")
 
 
-def import_sailwave_data(json_path=None, db_path=None, cleanup_orphans=False):
+def import_sailwave_data(xml_path=None, db_path=None, cleanup_orphans=False):
     """
     Main import function.
     
     Returns dict with import statistics.
     """
-    if json_path is None:
-        json_path = DEFAULT_JSON_PATH
+    if xml_path is None:
+        xml_path = DEFAULT_XML_PATH
     if db_path is None:
         db_path = DB_PATH
     
     print(f"\n{'#'*60}")
     print(f"# SAILWAVE DATA IMPORT")
     print(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"# JSON: {json_path}")
+    print(f"# XML: {xml_path}")
     print(f"# DB:   {db_path}")
     print(f"{'#'*60}\n")
     
     # Verify files exist
-    if not os.path.exists(json_path):
-        print(f"ERROR: JSON file not found: {json_path}")
-        print(f"       Expected at: {DEFAULT_JSON_PATH}")
-        print(f"       Or specify path with --json-path")
+    if not os.path.exists(xml_path):
+        print(f"ERROR: XML file not found: {xml_path}")
+        print(f"       Expected at: {DEFAULT_XML_PATH}")
+        print(f"       Or specify path with --xml-path")
         return False
     
     if not os.path.exists(db_path):
@@ -625,11 +526,11 @@ def import_sailwave_data(json_path=None, db_path=None, cleanup_orphans=False):
         c.execute('SELECT class_name, class_id FROM boat_classes')
         existing_classes = {row['class_name']: row['class_id'] for row in c.fetchall()}
         
-        # Parse Sailwave JSON
-        boats, classes = parse_sailwave_json(json_path)
+        # Parse the Sailwave XML export
+        boats, classes = parse_sailwave_xml(xml_path)
         
         if boats is None:
-            print("ERROR: Failed to parse JSON file")
+            print("ERROR: Failed to parse XML file")
             return False
         
         # Import classes
@@ -666,12 +567,12 @@ def import_sailwave_data(json_path=None, db_path=None, cleanup_orphans=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Import Sailwave boat_master.json into Flag Machine score.db'
+        description='Import Sailwave Boats_Master.xml into Flag Machine score.db'
     )
     parser.add_argument(
-        '--json-path',
+        '--xml-path',
         default=None,
-        help='Path to boat_master.json (default: tempref/boat_master.json)'
+        help=f'Path to Boats_Master.xml (default: {DEFAULT_XML_PATH})'
     )
     parser.add_argument(
         '--db-path',
@@ -695,24 +596,20 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
     
-    if args.json_path:
-        json_path = args.json_path
+    if args.xml_path:
+        xml_path = args.xml_path
     else:
-        # Try multiple locations
+        # Seek the Sailwave XML export - public database folder first
         for p in [
-            os.path.join(project_dir, 'tempref', 'boat_master.json'),
-            os.path.join(project_dir, 'tempref', 'boat_master.htm'),
-            os.path.join(project_dir, 'boat_master.json'),
-            os.path.join(project_dir, 'boat_master.htm'),
-            os.path.join(script_dir, 'boat_master.json'),
-            os.path.join(script_dir, 'boat_master.htm'),
-            'C:\\Users\\Public\\Documents\\Sailwave\\Flagmachine_database\\boat_master.json',
+            os.path.join(SAILWAVE_DB_FOLDER, 'Boats_Master.xml'),
+            os.path.join(SAILWAVE_DB_FOLDER, 'boat_master.xml'),
+            os.path.join(project_dir, 'tempref', 'Boats_Master.xml'),
         ]:
             if os.path.exists(p):
-                json_path = p
+                xml_path = p
                 break
         else:
-            json_path = DEFAULT_JSON_PATH
+            xml_path = DEFAULT_XML_PATH
     
     if args.db_path:
         db_path = args.db_path
@@ -723,13 +620,13 @@ def main():
         print("DRY RUN MODE - No changes will be made to the database")
         # For dry run, we'd need to modify the import functions
         # For now, just show what we would do
-        boats, classes = parse_sailwave_json(json_path)
+        boats, classes = parse_sailwave_xml(xml_path)
         if boats:
             print(f"\nWould import {len(boats)} boats")
             print(f"Would import {len(classes)} classes")
         return
     
-    success = import_sailwave_data(json_path, db_path, args.cleanup_orphans)
+    success = import_sailwave_data(xml_path, db_path, args.cleanup_orphans)
     
     if success:
         print("\n[OK] Import completed successfully")

@@ -60,17 +60,33 @@
 - **Empty columns**: Shows columns for classes in sequence even with zero sailors
 - **Open Category**: Trailing column for sailors with classes not in any sequence
 
-**Sailor grouping logic (v1.2):**
-1. Query `/api/sailors-for-onwater` (sequence-aware)
-2. Create empty groups for all classes in Flag Machine sequence
-3. Group sailors by (class_id + sequence_number) composite key
-4. Sort by sequence_number first, then sailor count descending
-5. Show all sequence groups + Open Category
+**Sailor grouping logic (verified working, 2026-10-09):**
 
-**Sailors per class (current test data):**
-- Database: 64 sailors across 12 boat classes
+Sources of truth:
+- Flag Machine start sequence: which classes start, and in what order (grid_index)
+- `boat_classes` table: maps class_id to a flag_image
+- `sailors` table: each sailor's `racing_today` flag and `class_id`
+
+Rules:
+1. Only sailors checked in the Sailor Registry (`racing_today = 1`) appear on the finish sheet.
+2. The countdown sequence may contain N separate starts with class flags. Each flag in the sequence is matched (case-insensitive) to a `boat_classes` row via `flag_image`, producing one column per class start.
+3. Sailors whose `class_id` matches a class in the current sequence land in that class's column, grouped by (class_id + sequence/grid index).
+4. Any sailor whose class is NOT in the current sequence — or who has no class or whose class has no flag — automatically lands in the trailing "Open Category" column.
+5. Columns sort by sequence number first, then sailor count descending. Classes in the sequence with zero signed-on sailors still show an empty column.
+6. Once a class has started, its roster locks to the sailors who were signed on at that class's start moment (`race_sailors`). Classes not yet started stay live, reflecting registry checkbox changes in real time.
+
+Data integrity (enforced automatically at every app startup):
+- `sailors.class_id` is re-synced to `boat_classes` by case-insensitive boat class name. Sailors whose class matches no boat class get `class_id = NULL` and therefore group into Open Category.
+- `boat_classes.flag_image` is re-scanned against the files in `/static/flags/`. Classes whose flag is NULL or missing on disk are matched to a flag file by normalized class name (e.g. "Ilca 7" → `ilca7.png`), or a documented alias ("3.7" → `farr3point7.png`). Classes with no matching flag image keep `flag_image = NULL` → their sailors group into Open Category.
+
+Sailor data source (Sailwave integration):
+- Sailors are imported via the "Refresh Sailwave" button from `C:\Users\Public\Documents\Sailwave\Flagmachine_database\Boats_Master.xml`.
+- The XML `compclass` field (the division, e.g. "ILCA 6") determines a sailor's boat class. `compfleet` (coarse fleet, e.g. "ILCA") is ignored.
+- `short_name` is the helm's first name; `sailor_name` is the full helm name; UID is `SL-<sail_no>`.
+
+**Sailors per class (current data):**
+- Database: 55 sailors across 11 boat classes, imported from Boats_Master.xml
 - Dynamic: Varies based on racing_today selection and Flag Machine sequences
-- **Total in DB: 64 sailors, 12 boat classes**
 
 #### 2. Sailor Card Display
 
