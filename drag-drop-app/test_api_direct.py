@@ -34,7 +34,7 @@ def test_api_direct():
             
     except requests.exceptions.ConnectionError:
         print("   ERROR: Cannot connect to localhost:5000 - Flask app not running")
-        print("   Start Flask with: C:/Users/anton/miniconda3/python.exe app.py")
+        print("   Start Flask with: C:/ProgramData/miniconda3/python.exe app.py")
 
 if __name__ == "__main__":
     test_api_direct()

@@ -11,7 +11,7 @@ echo ========================================
 echo.
 
 REM Use miniconda Python
-set PYTHON=C:\Users\anton\miniconda3\python.exe
+set PYTHON=C:\ProgramData\miniconda3\python.exe
 
 REM Check if Python exists
 if not exist "%PYTHON%" (

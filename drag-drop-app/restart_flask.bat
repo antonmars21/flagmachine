@@ -6,4 +6,4 @@ REM Wait a moment
 timeout /t 2 /nobreak
 
 REM Start fresh Flask app with debug=True
-C:\Users\anton\miniconda3\python.exe app.py
+C:\ProgramData\miniconda3\python.exe app.py

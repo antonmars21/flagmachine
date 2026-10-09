@@ -229,7 +229,7 @@ python
 ### 2. Start Flask
 ```bash
 cd C:\Users\anton\flagmachine\drag-drop-app
-C:\Users\anton\miniconda3\python.exe app.py
+C:\ProgramData\miniconda3\python.exe app.py
 # Should see: "Running on http://localhost:5000"
 ```
 

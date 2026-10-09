@@ -1,7 +1,7 @@
 # Drag-Drop App Launcher for Windows (PowerShell)
 # This script starts both the Flag Machine and Sailor Scorer apps
 
-$pythonPath = "C:\Users\anton\miniconda3\python.exe"
+$pythonPath = "C:\ProgramData\miniconda3\python.exe"
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "  Flag Machine + Sailor Scorer" -ForegroundColor Cyan
