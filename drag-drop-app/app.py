@@ -518,7 +518,7 @@ def sailors_for_onwater():
     if race_id and started_class_ids:
         # Started classes: locked roster from race_sailors (whoever was signed on at start time)
         c.execute('''
-            SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, 
+            SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
                    rs.lap_count, rs.finish_time, rs.placement,
                    bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
                    rcs.sequence_number
@@ -536,7 +536,7 @@ def sailors_for_onwater():
     # Not-yet-started classes: LIVE from registry (racing_today), regardless of race_id
     if started_class_ids:
         c.execute('''
-            SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed,
+            SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
                    0 as lap_count, NULL as finish_time, NULL as placement,
                    bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
                    NULL as sequence_number
@@ -547,7 +547,7 @@ def sailors_for_onwater():
         '''.format(','.join('?' * len(started_class_ids))), tuple(started_class_ids))
     else:
         c.execute('''
-            SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed,
+            SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
                    0 as lap_count, NULL as finish_time, NULL as placement,
                    bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
                    NULL as sequence_number
@@ -557,6 +557,17 @@ def sailors_for_onwater():
             ORDER BY s.boat_class, s.seed
         ''')
     live_rows = c.fetchall()
+
+    # Last lap timestamp per sailor for this race (tie-break for on-water ordering)
+    last_lap_times = {}
+    if race_id:
+        c.execute('''
+            SELECT uid, lap_number, timestamp FROM lap_records
+            WHERE race_id = ? ORDER BY uid, lap_number
+        ''', (race_id,))
+        for lap_row in c.fetchall():
+            last_lap_times[lap_row['uid']] = lap_row['timestamp']
+
     conn.close()
     
     rows = list(started_rows) + list(live_rows)
@@ -597,6 +608,8 @@ def sailors_for_onwater():
             'short_name': row['short_name'],
             'boat_class': row['boat_class'],
             'seed': row['seed'],
+            'handicap': row['handicap'],
+            'last_lap_time': last_lap_times.get(row['uid']),
             'lap_count': row['lap_count'],
             'finish_time': row['finish_time'],
             'placement': row['placement'],
@@ -1130,15 +1143,16 @@ def record_lap():
         ''', (race_id, uid)).fetchone()['lap_count']
         
         # Record lap
+        lap_time = datetime.now().isoformat()
         c.execute('''
             INSERT INTO lap_records (race_id, uid, lap_number, timestamp)
             VALUES (?, ?, ?, ?)
-        ''', (race_id, uid, lap_number, datetime.now().isoformat()))
-        
+        ''', (race_id, uid, lap_number, lap_time))
+
         conn.commit()
         conn.close()
-        
-        return jsonify({"status": "success", "lap_count": lap_number})
+
+        return jsonify({"status": "success", "lap_count": lap_number, "last_lap_time": lap_time})
     except Exception as e:
         conn.close()
         return jsonify({"status": "error", "message": str(e)}), 400

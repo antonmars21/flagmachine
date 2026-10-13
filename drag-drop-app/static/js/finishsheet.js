@@ -107,8 +107,18 @@ async function loadAndRenderSailors() {
  */
 function renderColumns(columns) {
     const wrapper = document.getElementById('columns-wrapper');
+
+    // Capture scroll positions before rebuilding so periodic re-renders
+    // (3s pre-race refresh) don't snap lists back to the top
+    const savedWrapperScroll = wrapper.scrollTop;
+    const savedListScrolls = {};
+    wrapper.querySelectorAll('.sailors-list').forEach(listEl => {
+        const key = listEl.dataset.scrollKey || ('idx-' + listEl.dataset.column);
+        savedListScrolls[key] = listEl.scrollTop;
+    });
+
     wrapper.innerHTML = '';
-    
+
     if (!columns || columns.length === 0) {
         wrapper.innerHTML = '<div style="padding: 40px; text-align: center; color: #94a3b8; grid-column: 1/-1;">No classes in the Start Sequence yet. Drop flags into the Flag Machine to populate columns.</div>';
         return;
@@ -138,7 +148,9 @@ function renderColumns(columns) {
         const list = document.createElement('div');
         list.className = 'sailors-list';
         list.dataset.column = col_num;
-        
+        const scrollKey = colData.class_name + '|' + (colData.sequence_number || 0);
+        list.dataset.scrollKey = scrollKey;
+
         sailors.forEach((sailor, index) => {
             const card = createSailorCard(sailor, col_num, index);
             list.appendChild(card);
@@ -147,7 +159,10 @@ function renderColumns(columns) {
         
         column_div.appendChild(list);
         wrapper.appendChild(column_div);
+        if (savedListScrolls[scrollKey] !== undefined) list.scrollTop = savedListScrolls[scrollKey];
     });
+
+    wrapper.scrollTop = savedWrapperScroll;
 }
 
 /**
@@ -166,6 +181,8 @@ function createSailorCard(sailor, col_num, index) {
     card.dataset.classId = sailor.class_id != null ? sailor.class_id : '';
     card.dataset.seed = sailor.seed != null ? sailor.seed : 9999;
     card.dataset.lapCount = sailor.lap_count || 0;
+    card.dataset.handicap = sailor.handicap != null ? sailor.handicap : 9999;
+    card.dataset.lastLapTime = sailor.last_lap_time || '';
     card.dataset.finishTime = sailor.finish_time || '';
     card.dataset.manualOverride = 'false';
     card.draggable = true;
@@ -210,11 +227,17 @@ function createSailorCard(sailor, col_num, index) {
 }
 
 /**
- * Comparator for auto-sorting non-manual, unfinished cards: lap_count desc, then seed asc.
+ * Comparator for auto-sorting non-manual, unfinished cards:
+ * lap_count desc, then last lap time asc, then handicap asc, then seed asc.
  */
-function compareByLapThenSeed(a, b) {
+function compareByLapThenTimeThenHandicap(a, b) {
     const lapDiff = (parseInt(b.dataset.lapCount) || 0) - (parseInt(a.dataset.lapCount) || 0);
     if (lapDiff !== 0) return lapDiff;
+    const aTime = a.dataset.lastLapTime || '';
+    const bTime = b.dataset.lastLapTime || '';
+    if (aTime !== bTime) return aTime < bTime ? -1 : 1;
+    const hDiff = (parseFloat(a.dataset.handicap) || 9999) - (parseFloat(b.dataset.handicap) || 9999);
+    if (hDiff !== 0) return hDiff;
     return (parseInt(a.dataset.seed) || 9999) - (parseInt(b.dataset.seed) || 9999);
 }
 
@@ -237,7 +260,7 @@ function resortColumn(listEl) {
     // Preserve manual cards at their current slot index within the unfinished group;
     // fill remaining slots with auto-sorted (by lap count, then seed) cards.
     const manualFlags = unfinished.map(c => c.dataset.manualOverride === 'true');
-    const autoCards = unfinished.filter(c => c.dataset.manualOverride !== 'true').sort(compareByLapThenSeed);
+    const autoCards = unfinished.filter(c => c.dataset.manualOverride !== 'true').sort(compareByLapThenTimeThenHandicap);
     
     const merged = [];
     let autoIdx = 0;
@@ -270,6 +293,7 @@ async function recordLap(uid, card) {
             const lapValue = card.querySelector('.lap-value');
             lapValue.textContent = data.lap_count;
             card.dataset.lapCount = data.lap_count;
+            if (data.last_lap_time) card.dataset.lastLapTime = data.last_lap_time;
             
             const list = card.parentElement;
             if (list) resortColumn(list);
