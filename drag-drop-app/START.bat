@@ -1,25 +1,37 @@
 @echo off
 REM Drag-Drop App Launcher for Windows
-REM This script starts both the Flag Machine and Sailor Scorer apps
+REM Starts the Flag Machine + Finish Sheet app (Flask, port 5000)
 
 setlocal enabledelayedexpansion
 
-echo.
-echo ========================================
-echo   Flag Machine + Sailor Scorer
-echo ========================================
-echo.
+REM === EDIT THIS PATH IF THE APP FOLDER MOVES ===
+set "APP_DIR=C:\Users\Public\flagmachine\drag-drop-app"
 
 REM Use miniconda Python
-set PYTHON=C:\ProgramData\miniconda3\python.exe
+set "PYTHON=C:\ProgramData\miniconda3\python.exe"
 
-REM Check if Python exists
-if not exist "%PYTHON%" (
-    echo ERROR: Python not found at %PYTHON%
+REM Check app folder exists
+if not exist "%APP_DIR%\app.py" (
+    echo ERROR: app.py not found in %APP_DIR%
+    echo Edit APP_DIR at the top of this script.
     pause
     exit /b 1
 )
 
+REM Check if Python exists
+if not exist "%PYTHON%" (
+    echo ERROR: Python not found at %PYTHON%
+    echo Edit PYTHON at the top of this script.
+    pause
+    exit /b 1
+)
+
+echo.
+echo ========================================
+echo   Flag Machine + Finish Sheet
+echo ========================================
+echo.
+echo App folder: %APP_DIR%
 echo Using Python: %PYTHON%
 echo.
 
@@ -36,25 +48,21 @@ if %errorlevel% neq 0 (
 )
 
 echo ========================================
-echo Starting both apps in separate windows...
+echo Starting app...
 echo ========================================
 echo.
 
-REM Open two separate Command Prompt windows for each app
-start "Flag Machine - http://localhost:5000" cmd /k "cd /d %cd% && %PYTHON% app.py"
-timeout /t 2
-
-start "Sailor Scorer - http://localhost:5001" cmd /k "cd /d %cd% && %PYTHON% score.py"
+start "Flag Machine - http://localhost:5000" cmd /k "cd /d %APP_DIR% && %PYTHON% app.py"
 
 echo.
 echo ========================================
-echo Apps started! Open your browser:
+echo App started! Open your browser:
 echo.
 echo Flag Machine:    http://localhost:5000
-echo Sailor Scorer:   http://localhost:5001
+echo Finish Sheet:    http://localhost:5000/finishsheet
+echo Display Board:   http://localhost:5000/display
 echo.
-echo Each app runs in its own Command Prompt window.
-echo Close those windows to stop the apps.
+echo Close the Command Prompt window to stop the app.
 echo ========================================
 echo.
 
