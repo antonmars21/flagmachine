@@ -47,21 +47,36 @@ for col in data['columns']:
     sailors = [(s['short_name'], s['boat_class']) for s in col['sailors']]
     print(f"  seq {col['sequence_number']}: {col['class_name']:15} -> {sailors}")
 
-# Assertions
-cols = {col['class_name']: col for col in data['columns']}
-starling = {s['short_name'] for s in cols.get('Starling', {}).get('sailors', [])}
-ilca6 = {s['short_name'] for s in cols.get('Ilca 6', {}).get('sailors', [])}
-optimist = {s['short_name'] for s in cols.get('Optimist', {}).get('sailors', [])}
-open_cat = {s['short_name'] for s in cols.get('Open Category', {}).get('sailors', [])}
+# Assertions - expected grouping is derived from the DB itself (registry gets
+# refreshed from Sailwave, so hardcoding names/classes here breaks the test)
+conn = sqlite3.connect('tempref/score_test.db')
+expected_col_of_uid = {}
+for uid in test_uids:
+    row = conn.execute('''
+        SELECT bc.class_name FROM sailors s
+        LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
+        WHERE s.uid = ?''', (uid,)).fetchone()
+    expected_col_of_uid[uid] = row[0] if row and row[0] else None
+conn.close()
 
-if starling != {'E. Harris', 'R. Feist'}:
-    failures.append(f"Starling column wrong: {starling}")
-if ilca6 != {'George', 'A. Coley'}:
-    failures.append(f"Ilca 6 column wrong: {ilca6}")
-if optimist:
-    failures.append(f"Optimist column should be empty: {optimist}")
-if open_cat != {'B. Smith', 'T. Liew'}:
-    failures.append(f"Open Category wrong: {open_cat}")
+sequence_classes = {'Starling', 'Ilca 6', 'Optimist'}
+cols = {col['class_name']: col for col in data['columns']}
+uid_col = {}
+for col_name, col in cols.items():
+    for s in col['sailors']:
+        uid_col.setdefault(s['uid'], col_name)
+
+for uid in test_uids:
+    class_name = expected_col_of_uid[uid]
+    want = class_name if class_name in sequence_classes else 'Open Category'
+    got = uid_col.get(uid)
+    if got != want:
+        failures.append(f"{uid} ({class_name or 'no class'}): expected {want}, got {got}")
+
+# Classes in the sequence with no sailors must still show an (empty) column
+for col_name in sequence_classes:
+    if col_name not in cols:
+        failures.append(f"missing column: {col_name}")
 
 if failures:
     print('FAIL:', failures)

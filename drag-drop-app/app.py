@@ -277,6 +277,7 @@ app_state = {
     "race_id": None,
     "race_start_timestamp": None,
     "class_start_times": {},
+    "open_start_time": None,
     "race_ended": False,
     "race_end_timestamp": None
 }
@@ -306,9 +307,11 @@ def get_active_class_ids_from_sequence():
     """
     flag_images = set()
     for item in app_state.get('sequence', []):
-        fi = item.get('flag_image')
-        if fi:
-            flag_images.add(fi)
+        # Match ALL flags in the start event: primary + secondary
+        # (multiple classes can share one start, e.g. Ilca 6 + Ilca 7)
+        for fi in (item.get('flag_image'), item.get('secondary_flag_image')):
+            if fi:
+                flag_images.add(fi)
     if not flag_images:
         return set()
     
@@ -345,9 +348,11 @@ def get_class_sequence_mapping():
     conn = get_db_connection()
     c = conn.cursor()
     for item in app_state.get('sequence', []):
-        flag_image = item.get('flag_image')
         grid_index = item.get('grid_index', 1)
-        if flag_image:
+        # Match ALL flags in the start event: primary + secondary
+        for flag_image in (item.get('flag_image'), item.get('secondary_flag_image')):
+            if not flag_image:
+                continue
             c.execute('SELECT class_id FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
             row = c.fetchone()
             if row and row['class_id'] not in mapping:  # Don't override already-started classes
@@ -355,6 +360,33 @@ def get_class_sequence_mapping():
     conn.close()
     
     return mapping
+
+OPEN_FLAG_NAMES = {'openclass'}
+
+
+def open_flag_in_sequence():
+    """True if an open-class flag (openclass.*) appears in the current Flag
+    Machine sequence (primary or secondary slot). When present, the RO
+    controls when the Open Category starts: it activates when that start
+    event fires. Without an open flag, the Open Category activates with the
+    race's first start."""
+    for item in app_state.get('sequence', []):
+        for fi in (item.get('flag_image'), item.get('secondary_flag_image')):
+            if fi:
+                base = os.path.splitext(os.path.basename(fi))[0].lower()
+                if base in OPEN_FLAG_NAMES:
+                    return True
+    return False
+
+
+def open_class_started():
+    """Whether Open Category sailors may record laps/finishes yet."""
+    if app_state.get('open_start_time'):
+        return True
+    if open_flag_in_sequence():
+        return False
+    return bool(app_state.get('race_id'))
+
 
 # ==================== FLAG MACHINE ROUTES ====================
 
@@ -514,6 +546,7 @@ def sailors_for_onwater():
     
     # Get sequence number mapping for grouping classes by start sequence
     class_sequence_mapping = get_class_sequence_mapping()
+    open_started = open_class_started()
     
     if race_id and started_class_ids:
         # Started classes: locked roster from race_sailors (whoever was signed on at start time)
@@ -533,7 +566,10 @@ def sailors_for_onwater():
     else:
         started_rows = []
     
-    # Not-yet-started classes: LIVE from registry (racing_today), regardless of race_id
+    # Not-yet-started classes: LIVE from registry (racing_today), regardless of race_id.
+    # Also includes sailors who signed on AFTER their class started (late sign-ons,
+    # e.g. returning after boat repairs): their class is started but they are not in
+    # the locked roster (race_sailors) yet, so they stay live until first lap/finish.
     if started_class_ids:
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
@@ -542,9 +578,12 @@ def sailors_for_onwater():
                    NULL as sequence_number
             FROM sailors s
             LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
-            WHERE s.racing_today = 1 AND (s.class_id IS NULL OR s.class_id NOT IN ({}))
+            WHERE s.racing_today = 1
+              AND (s.class_id IS NULL
+                   OR s.class_id NOT IN ({})
+                   OR s.uid NOT IN (SELECT uid FROM race_sailors WHERE race_id = ?))
             ORDER BY s.boat_class, s.seed
-        '''.format(','.join('?' * len(started_class_ids))), tuple(started_class_ids))
+        '''.format(','.join('?' * len(started_class_ids))), (*started_class_ids, race_id))
     else:
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
@@ -576,11 +615,13 @@ def sailors_for_onwater():
     open_category_sailors = []
     
     # First, create empty groups for all classes in the current Flag Machine sequence
-    # This ensures columns appear even for classes with no sailors
+    # This ensures columns appear even for classes with no sailors.
+    # Both primary and secondary flags create a column (shared start = two columns).
     for item in app_state.get('sequence', []):
-        flag_image = item.get('flag_image')
         grid_index = item.get('grid_index', 1)
-        if flag_image:
+        for flag_image in (item.get('flag_image'), item.get('secondary_flag_image')):
+            if not flag_image:
+                continue
             conn_temp = get_db_connection()
             c_temp = conn_temp.cursor()
             c_temp.execute('SELECT class_id, class_name, flag_image, color_hex FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
@@ -631,6 +672,7 @@ def sailors_for_onwater():
         # If class_id is None, always go to open category
         if class_id is None:
             sailor_dict['open_category'] = True
+            sailor_dict['class_started'] = open_started
             open_category_sailors.append(sailor_dict)
         # If there are active classes in the sequence, only include classes that are in the sequence
         elif active_class_ids and class_id in active_class_ids:
@@ -663,6 +705,7 @@ def sailors_for_onwater():
         else:
             # Class exists but not in current sequence - goes to open category
             sailor_dict['open_category'] = True
+            sailor_dict['class_started'] = open_started
             open_category_sailors.append(sailor_dict)
     
     # Order sequence-class columns: by sequence number first, then by sailor count (most on left within same sequence)
@@ -840,6 +883,10 @@ def start_race():
                     SELECT start_time FROM race_class_starts WHERE race_id = ? AND class_id = ?
                 ''', (race_id, class_id))
                 app_state['class_start_times'][str(class_id)] = c.fetchone()['start_time']
+
+        # Manual backup starts the Open Category immediately too
+        if not app_state.get('open_start_time'):
+            app_state['open_start_time'] = now_iso
         
         conn.commit()
         conn.close()
@@ -867,6 +914,24 @@ def class_start():
         return jsonify({"status": "error", "message": "flag_image required"}), 400
     
     try:
+        # Open-class flag: no boat class behind it - the Open Category starts
+        # when this countdown hits 00:00. First trigger wins (idempotent).
+        flag_base = os.path.splitext(os.path.basename(flag_image))[0].lower()
+        if flag_base in OPEN_FLAG_NAMES:
+            if not app_state.get('race_id'):
+                c.execute('INSERT INTO races (status) VALUES (?)', ('RUNNING',))
+                conn.commit()
+                app_state['race_id'] = c.lastrowid
+                app_state['race_start_timestamp'] = datetime.now().isoformat()
+            if not app_state.get('open_start_time'):
+                app_state['open_start_time'] = datetime.now().isoformat()
+            conn.close()
+            return jsonify({
+                "status": "success",
+                "open_start": True,
+                "start_time": app_state['open_start_time']
+            })
+
         # Look up boat class by flag_image (case-insensitive, defense in depth)
         c.execute('SELECT class_id, class_name FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
         row = c.fetchone()
@@ -935,6 +1000,8 @@ def race_status():
         "race_id": app_state.get('race_id'),
         "race_start_timestamp": app_state.get('race_start_timestamp'),
         "class_start_times": app_state.get('class_start_times', {}),
+        "open_started": open_class_started(),
+        "open_flag_in_sequence": open_flag_in_sequence(),
         "race_ended": app_state.get('race_ended', False),
         "race_end_timestamp": app_state.get('race_end_timestamp')
     })
@@ -986,6 +1053,7 @@ def reset_race():
     app_state['race_id'] = None
     app_state['race_start_timestamp'] = None
     app_state['class_start_times'] = {}
+    app_state['open_start_time'] = None
     app_state['race_ended'] = False
     app_state['race_end_timestamp'] = None
     app_state['status'] = 'READY'
@@ -1119,6 +1187,9 @@ def record_lap():
     if class_in_sequence and str(class_id) not in app_state.get('class_start_times', {}):
         conn.close()
         return jsonify({"status": "error", "message": "Class has not started yet"}), 400
+    if not class_in_sequence and not open_class_started():
+        conn.close()
+        return jsonify({"status": "error", "message": "Open class has not started yet"}), 400
     
     try:
         # Ensure the sailor belongs to this race (open-category sailors are
@@ -1186,6 +1257,9 @@ def mark_finish():
     if class_in_sequence and str(class_id) not in app_state.get('class_start_times', {}):
         conn.close()
         return jsonify({"status": "error", "message": "Class has not started yet"}), 400
+    if not class_in_sequence and not open_class_started():
+        conn.close()
+        return jsonify({"status": "error", "message": "Open class has not started yet"}), 400
     
     try:
         # Ensure the sailor belongs to this race (open-category sailors are

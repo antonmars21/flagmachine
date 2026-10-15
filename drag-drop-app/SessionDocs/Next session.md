@@ -2,22 +2,17 @@
 
 Read `AgentReadme/Bug fixes and new features.md` first for the full bug list and status.
 
-## Q1. Bug 14 - confirm diagnosis
-Your recording shows SL-177 (Charlotte, P Class) signed on 23s AFTER the P Class start fired.
-She then vanishes from the finish sheet (not in the locked roster, excluded from live rows).
-Is this bug 14? If yes, which handling:
-  a) Show late sign-ons in their class column, flagged "late" (recommended)
-  b) Route them to Open Category
-  c) Block the registry checkbox once their class has started
+## Q1. Bug 14 - DECIDED 2026-10-15 (fixed)
+Late sign-ons stay in their OWN class column, no "late" badge (common after boat repairs).
+Fix in `/api/sailors-for-onwater`: sailors whose class started but who are not in the locked
+roster (race_sailors) stay live and visible until their first lap/finish, then join the roster
+without duplicating. Regression: `scripts/test_late_signon.py`.
 
-## Q2. Open class rule - minimum 3 boats to constitute a class
-Confirm: class with <3 signed on at its start moment -> sailors sail in Open Category.
-Sub-decisions:
-  a) Decide at class-start moment and freeze (recommended) - or another time?
-  b) Hide the sub-3 class column on the finish sheet, or show empty?
-  c) Once dissolved to open, it stays open even if a 4th boat signs on late - OK?
-  d) Open category results need handicap/corrected times (Phase 2) - required now or later?
-  e) Add an amber signed-on count per flag on the RO page as a pre-start warning?
+## Q2. Open class rule - DECIDED 2026-10-15 (implemented as bug 12 rule)
+No minimum-boat rule. The RO sets class flags in the start events; when a sailor's class has a
+flag (primary OR secondary) they get their own column; when there is no matching flag they go to
+Open Category. The RO can load multiple classes into one start (e.g. Ilca 6 + Ilca 7 together)
+via the secondary flag - backend now matches ALL flags in every start event.
 
 ## Q3. Bug 5 scope - reset finish sheet
 Recording shows reset-finish-sheet also WIPES the live Flag Machine sequence (app_state).

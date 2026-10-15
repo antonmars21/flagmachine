@@ -179,6 +179,7 @@ function createSailorCard(sailor, col_num, index) {
     card.dataset.column = col_num;
     card.dataset.index = index;
     card.dataset.classId = sailor.class_id != null ? sailor.class_id : '';
+    card.dataset.openCategory = sailor.open_category ? 'true' : 'false';
     card.dataset.seed = sailor.seed != null ? sailor.seed : 9999;
     card.dataset.lapCount = sailor.lap_count || 0;
     card.dataset.handicap = sailor.handicap != null ? sailor.handicap : 9999;
@@ -191,7 +192,7 @@ function createSailorCard(sailor, col_num, index) {
     const class_started = !!sailor.class_started;
     // Open-category sailors (no class in the countdown) record laps/finishes
     // against the race start rather than a class start
-    const can_record = class_started || !!sailor.open_category;
+    const can_record = class_started;
     if (class_started) card.classList.add('class-started');
     
     card.innerHTML = `
@@ -369,7 +370,10 @@ async function pollClassStarts() {
         document.querySelectorAll('.sailor-card').forEach(card => {
             const classId = card.dataset.classId;
             const isFinished = card.classList.contains('finished');
-            const started = classId && startedClassIds.has(classId);
+            // Open-category sailors activate when the open flag fires (if the
+            // RO set one) or with the race start - backend reports via open_started
+            const openStarted = !!data.open_started;
+            const started = (classId && startedClassIds.has(classId)) || (card.dataset.openCategory === 'true' && openStarted);
             
             const lapBtn = card.querySelector('.btn-lap');
             const checkbox = card.querySelector('.finish-checkbox');

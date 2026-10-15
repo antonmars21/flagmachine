@@ -31,6 +31,12 @@ c.execute("INSERT INTO lap_records (race_id, uid, lap_number, timestamp) VALUES 
 conn.commit()
 conn.close()
 
+# Expected names come from the DB itself (registry gets refreshed from Sailwave,
+# so hardcoding names here breaks the test whenever the fleet data changes)
+conn = sqlite3.connect('tempref/score_test.db')
+names = dict(conn.execute("SELECT uid, short_name FROM sailors WHERE uid IN ('SL-1091', 'SL-955')"))
+conn.close()
+
 app_module.app_state['race_id'] = race_id
 app_module.app_state['class_start_times'] = {'3': datetime.now().isoformat()}
 
@@ -41,7 +47,7 @@ print('HTTP', resp.status_code)
 print(body)
 
 assert resp.status_code == 200, f"export failed: {resp.status_code}"
-assert 'E. Harris' in body, 'sailor missing from CSV'
-assert 'R. Feist' in body, 'sailor missing from CSV'
+assert names['SL-1091'] in body, 'sailor missing from CSV'
+assert names['SL-955'] in body, 'sailor missing from CSV'
 assert 'Starling' in body, 'class missing from CSV'
 print('PASS: export-race-csv returns full CSV without closed-database error')

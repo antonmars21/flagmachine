@@ -6,6 +6,8 @@ setlocal enabledelayedexpansion
 
 REM === EDIT THIS PATH IF THE APP FOLDER MOVES ===
 set "APP_DIR=C:\Users\Public\flagmachine\drag-drop-app"
+REM === EDIT THIS PATH IF THE APP FOLDER MOVES ===
+set "APP_DIR=C:\Users\Anton\flagmachine\drag-drop-app"
 
 REM Use miniconda Python
 set "PYTHON=C:\ProgramData\miniconda3\python.exe"
