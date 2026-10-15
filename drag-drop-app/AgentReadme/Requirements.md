@@ -13,7 +13,7 @@
 - **Live countdown display:** Each row shows MM:SS format countdown (e.g., "00:45")
 - **Grid total countdown:** Display sum of all remaining rows per grid
 - **Row reordering:** Drag rows within same grid to reorder sequence
-- **Secondary flags:** Option to add a second flag per row (cosmetic only; doesn't affect timing)
+- **Secondary/tertiary flags:** Option to add a second and third flag per row. A class flag in ANY slot shares that row's start sequence - two or three classes can be in the same start sequence and start together when the event's last row completes; signal flags (P, D) are cosmetic only for timing.
 - **Remove rows:** Delete button to remove individual rows from sequence
 - **Race control buttons:** START (green), STOP (red), RESET (gray), END RACE (blue)
 

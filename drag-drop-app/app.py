@@ -264,9 +264,8 @@ def get_dynamic_asset_library():
             if filename.lower().endswith(valid_extensions):
                 base_name, _ = os.path.splitext(filename)
                 clean_label = base_name.replace('_', ' ').replace('-', ' ').title()
-                default_minutes = 2
-                if "prep" in clean_label.lower() or "p flag" in clean_label.lower():
-                    default_minutes = 1
+                # RO hotfix 2026-10-16: every row in a start event defaults to 1 minute
+                default_minutes = 1
                 
                 assets.append({
                     "label": clean_label,
@@ -322,9 +321,9 @@ def get_active_class_ids_from_sequence():
     """
     flag_images = set()
     for item in app_state.get('sequence', []):
-        # Match ALL flags in the start event: primary + secondary
+        # Match ALL flags in the start event: primary + secondary + tertiary
         # (multiple classes can share one start, e.g. Ilca 6 + Ilca 7)
-        for fi in (item.get('flag_image'), item.get('secondary_flag_image')):
+        for fi in (item.get('flag_image'), item.get('secondary_flag_image'), item.get('tertiary_flag_image')):
             if fi:
                 flag_images.add(fi)
     if not flag_images:
@@ -365,8 +364,8 @@ def get_class_sequence_mapping():
     c = conn.cursor()
     for item in app_state.get('sequence', []):
         grid_index = item.get('grid_index', 1)
-        # Match ALL flags in the start event: primary + secondary
-        for flag_image in (item.get('flag_image'), item.get('secondary_flag_image')):
+        # Match ALL flags in the start event: primary + secondary + tertiary
+        for flag_image in (item.get('flag_image'), item.get('secondary_flag_image'), item.get('tertiary_flag_image')):
             if not flag_image:
                 continue
             c.execute('SELECT class_id FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
@@ -387,7 +386,7 @@ def open_flag_in_sequence():
     event fires. Without an open flag, the Open Category activates with the
     race's first start."""
     for item in app_state.get('sequence', []):
-        for fi in (item.get('flag_image'), item.get('secondary_flag_image')):
+        for fi in (item.get('flag_image'), item.get('secondary_flag_image'), item.get('tertiary_flag_image')):
             if fi:
                 base = os.path.splitext(os.path.basename(fi))[0].lower()
                 if base in OPEN_FLAG_NAMES:
@@ -632,10 +631,10 @@ def sailors_for_onwater():
     
     # First, create empty groups for all classes in the current Flag Machine sequence
     # This ensures columns appear even for classes with no sailors.
-    # Both primary and secondary flags create a column (shared start = two columns).
+    # Primary, secondary and tertiary flags all create a column (shared start).
     for item in app_state.get('sequence', []):
         grid_index = item.get('grid_index', 1)
-        for flag_image in (item.get('flag_image'), item.get('secondary_flag_image')):
+        for flag_image in (item.get('flag_image'), item.get('secondary_flag_image'), item.get('tertiary_flag_image')):
             if not flag_image:
                 continue
             conn_temp = get_db_connection()

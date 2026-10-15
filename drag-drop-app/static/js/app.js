@@ -184,7 +184,7 @@ function setupDropZone(dropZone) {
         const row = createRow(rowId, data, gridIndex);
         dropZone.appendChild(row);
         state.sequence.push({
-            id: rowId, label: data.label, flag_image: data.flag, secondary_flag_image: null,
+            id: rowId, label: data.label, flag_image: data.flag, secondary_flag_image: null, tertiary_flag_image: null,
             countdown_minutes: data.minutes, status: 'PENDING', grid_index: gridIndex,
             current_remaining_seconds: data.minutes * 60
         });
@@ -205,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.isRunning) { e.preventDefault(); return; }
             e.dataTransfer.effectAllowed = 'copy';
             e.dataTransfer.setData('card-data', JSON.stringify({
-                label: card.dataset.label, flag: card.dataset.flag, minutes: parseInt(card.dataset.minutes) || 5
+                label: card.dataset.label, flag: card.dataset.flag, minutes: parseInt(card.dataset.minutes) || 1
             }));
         });
     });
@@ -356,6 +356,11 @@ function createRow(rowId, data, gridIndex) {
                 <span>+Flag</span>
             </div>
         </div>
+        <div class="event-row-col col-tertiary-flag">
+            <div class="tertiary-flag-box" data-row-id="${rowId}" draggable="false" style="width: 50px; height: 40px; background: #ddd; border: 2px dashed #999; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; cursor: copy;">
+                <span>+Flag</span>
+            </div>
+        </div>
         <div class="event-row-col col-metadata">
             <div class="class-label">${data.label}</div>
             <div class="status-badge">state-pending</div>
@@ -384,41 +389,43 @@ function createRow(rowId, data, gridIndex) {
         syncToServer();
     });
 
-    // Secondary flag box drop handler
-    const box = row.querySelector('.secondary-flag-box');
-    box.addEventListener('dragover', e => { 
-        e.preventDefault(); 
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = 'copy'; 
-        box.style.backgroundColor = '#90caf9';
-        box.style.borderColor = '#1976d2';
-    });
-    box.addEventListener('dragleave', e => { 
-        e.stopPropagation();
-        box.style.backgroundColor = '#ddd';
-        box.style.borderColor = '#999';
-    });
-    box.addEventListener('drop', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        box.style.backgroundColor = '#ddd';
-        box.style.borderColor = '#999';
-        try {
-            const cardData = e.dataTransfer.getData('card-data');
-            if (!cardData) {
-                console.warn('No card data in drop');
-                return;
+    // Secondary/tertiary flag box drop handlers (up to 3 flags per row)
+    row.querySelectorAll('.secondary-flag-box, .tertiary-flag-box').forEach(box => {
+        const flagField = box.classList.contains('tertiary-flag-box') ? 'tertiary_flag_image' : 'secondary_flag_image';
+        box.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+            box.style.backgroundColor = '#90caf9';
+            box.style.borderColor = '#1976d2';
+        });
+        box.addEventListener('dragleave', e => {
+            e.stopPropagation();
+            box.style.backgroundColor = '#ddd';
+            box.style.borderColor = '#999';
+        });
+        box.addEventListener('drop', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            box.style.backgroundColor = '#ddd';
+            box.style.borderColor = '#999';
+            try {
+                const cardData = e.dataTransfer.getData('card-data');
+                if (!cardData) {
+                    console.warn('No card data in drop');
+                    return;
+                }
+                const d = JSON.parse(cardData);
+                const item = state.sequence.find(s => s.id === rowId);
+                if (item) {
+                    item[flagField] = d.flag;
+                    box.innerHTML = `<img src="/static/flags/${d.flag}" alt="Flag" style="width: 40px; height: 35px; object-fit: contain;">`;
+                    syncToServer();
+                }
+            } catch (err) {
+                console.error('Flag drop failed:', err);
             }
-            const d = JSON.parse(cardData);
-            const item = state.sequence.find(s => s.id === rowId);
-            if (item) { 
-                item.secondary_flag_image = d.flag; 
-                box.innerHTML = `<img src="/static/flags/${d.flag}" alt="Secondary" style="width: 40px; height: 35px; object-fit: contain;">`; 
-                syncToServer(); 
-            }
-        } catch (err) {
-            console.error('Secondary flag drop failed:', err);
-        }
+        });
     });
 
     row.addEventListener('dragstart', e => {
@@ -470,6 +477,7 @@ function updateCountdown() {
                 gridRows.forEach(r => {
                     if (r.flag_image) flags.push(r.flag_image);
                     if (r.secondary_flag_image) flags.push(r.secondary_flag_image);
+                    if (r.tertiary_flag_image) flags.push(r.tertiary_flag_image);
                 });
                 fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_images: flags, sequence_number: grid }) }).catch(console.error);
             }

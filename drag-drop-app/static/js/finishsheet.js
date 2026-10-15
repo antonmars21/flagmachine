@@ -188,27 +188,30 @@ function createSailorCard(sailor, col_num, index) {
     card.dataset.manualOverride = 'false';
     card.draggable = true;
     
-    const finished_class = sailor.finish_time ? ' (Finished)' : '';
+    const finished_class = sailor.finish_time ? ' (Fin)' : '';
     const class_started = !!sailor.class_started;
     // Open-category sailors (no class in the countdown) record laps/finishes
     // against the race start rather than a class start
     const can_record = class_started;
     if (class_started) card.classList.add('class-started');
     
+    const flag_img = sailor.flag_image
+        ? `<img class="sailor-flag" src="/static/flags/${sailor.flag_image}" alt="${sailor.boat_class}">`
+        : '';
     card.innerHTML = `
-        <div class="sailor-header">
-            <span class="sail-number">${sailor.sail_no}</span>
-            <span class="sailor-class">${sailor.boat_class}</span>
+        ${flag_img}
+        <div class="sailor-id">
+            <div class="sailor-name">${sailor.short_name}${finished_class}</div>
+            <div class="sailor-class">${sailor.boat_class}</div>
         </div>
-        <div class="sailor-nickname">${sailor.short_name}${finished_class}</div>
-        <div class="sailor-controls">
-            <div class="lap-counter">
-                <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${can_record ? '' : 'disabled'}>+ Lap</button>
-                <div class="lap-value">${sailor.lap_count || 0}</div>
-            </div>
-            <input type="checkbox" class="finish-checkbox" data-uid="${sailor.uid}" 
-                ${sailor.finish_time ? 'checked disabled' : (can_record ? '' : 'disabled')}>
+        <div class="sailor-spacer"></div>
+        <span class="sail-number">${sailor.sail_no}</span>
+        <div class="lap-counter">
+            <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${can_record ? '' : 'disabled'}>+ Lap</button>
+            <div class="lap-value">${sailor.lap_count || 0}</div>
         </div>
+        <input type="checkbox" class="finish-checkbox" data-uid="${sailor.uid}" 
+            ${sailor.finish_time ? 'checked disabled' : (can_record ? '' : 'disabled')}>
     `;
     
     // Event listeners
@@ -229,10 +232,12 @@ function createSailorCard(sailor, col_num, index) {
 
 /**
  * Comparator for auto-sorting non-manual, unfinished cards:
- * lap_count desc, then last lap time asc, then handicap asc, then seed asc.
+ * lap_count asc (sailors approaching their next lap completion stay at the top;
+ * completing a lap moves the sailor down the list), then last lap time asc,
+ * then handicap asc, then seed asc.
  */
 function compareByLapThenTimeThenHandicap(a, b) {
-    const lapDiff = (parseInt(b.dataset.lapCount) || 0) - (parseInt(a.dataset.lapCount) || 0);
+    const lapDiff = (parseInt(a.dataset.lapCount) || 0) - (parseInt(b.dataset.lapCount) || 0);
     if (lapDiff !== 0) return lapDiff;
     const aTime = a.dataset.lastLapTime || '';
     const bTime = b.dataset.lastLapTime || '';
@@ -245,7 +250,8 @@ function compareByLapThenTimeThenHandicap(a, b) {
 /**
  * Re-sort a sailor list column:
  * - Finished sailors always drop to the bottom, ordered by finish time (first finisher on top of the finished group).
- * - Unfinished sailors are ordered by lap count (desc), then seed (asc) as tie-break.
+ * - Unfinished sailors are ordered by lap count (asc - lowest first), so sailors
+ *   approaching lap completion stay at the top; completing a lap moves them down.
  * - Cards manually dragged (manualOverride='true') keep their current position among the unfinished group,
  *   unless/until they finish - finishing always overrides manual placement and drops them to the bottom.
  */

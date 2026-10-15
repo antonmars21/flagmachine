@@ -151,21 +151,22 @@ body {
 }
 
 /* ========== ADD/REMOVE GRID BUTTONS ========== */
+/* Add Start button: fixed bottom-right, same rounded-rectangle style as the other buttons */
 .btn-add-grid {
-    padding: 6px 12px;
-    font-size: 18px;
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    padding: 10px 20px;
+    font-size: 14px;
     font-weight: bold;
     background-color: var(--neon-green);
     color: #fff;
     border: none;
-    border-radius: 50%;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
-    min-width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    z-index: 50;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .btn-add-grid:hover {
@@ -273,7 +274,7 @@ body {
 /* ========== RIGHT PANE: EVENT SEQUENCE ========== */
 .event-sequence-pane {
     flex: 1;
-    padding: 25px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -283,13 +284,23 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
 }
 
 /* ========== EVENT GRIDS ========== */
+/* Grids lay out side by side (narrower boxes) so more start sequences
+   are visible at once; falls back to a single full-width column on
+   narrow screens. */
+#event-grids-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
 .event-grid {
-    margin-bottom: 25px;
-    padding: 20px;
+    margin-bottom: 0;
+    padding: 10px;
     border-radius: 8px;
     background-color: #121824;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -335,8 +346,8 @@ body {
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid #334155;
-    padding-bottom: 10px;
-    margin-bottom: 15px;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
     position: relative;
 }
 
@@ -367,14 +378,14 @@ body {
 
 /* ========== DROP ZONE ========== */
 .flag-drop-zone {
-    min-height: 150px;
+    min-height: 110px;
     background-color: #ffffff;
     border: 2px dashed #bbb;
     border-radius: 6px;
-    padding: 12px;
+    padding: 8px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
     overflow-y: auto;
     transition: all 0.2s ease;
 }
@@ -392,11 +403,11 @@ body {
     background-color: var(--card-pending);
     border: 2px solid var(--border-pending);
     border-radius: 10px;
-    padding: 15px;
+    padding: 8px;
     display: grid;
-    grid-template-columns: 80px 80px 1fr 250px;
+    grid-template-columns: 80px 80px 80px 1fr 210px;
     align-items: center;
-    gap: 15px;
+    gap: 8px;
     position: relative;
     transition: all 0.2s ease;
 }
@@ -443,12 +454,14 @@ body {
     object-fit: contain;
 }
 
-/* Col 2: Secondary Flag */
-.col-secondary-flag {
+/* Col 2 + Col 3: Secondary / Tertiary Flag */
+.col-secondary-flag,
+.col-tertiary-flag {
     justify-content: center;
 }
 
-.secondary-flag-box { 
+.secondary-flag-box,
+.tertiary-flag-box { 
     display: flex !important;
     width: 50px; 
     height: 40px; 
@@ -463,12 +476,14 @@ body {
     transition: all 0.2s;
 }
 
-.secondary-flag-box:hover {
+.secondary-flag-box:hover,
+.tertiary-flag-box:hover {
     background: #e8e8e8;
     border-color: #666;
 }
 
-.secondary-flag-box img {
+.secondary-flag-box img,
+.tertiary-flag-box img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
@@ -578,7 +593,7 @@ body {
 
 .state-active {
     background-color: var(--card-active) !important;
-    border: 4px solid var(--neon-amber) !important;
+    border: 2px solid var(--neon-amber) !important;
     box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
     transform: scale(1.01);
 }
@@ -593,7 +608,7 @@ body {
 }
 
 .state-active .live-countdown-display {
-    font-size: 25vw;
+    font-size: 28px;
     color: #fff;
     text-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
     line-height: 1;

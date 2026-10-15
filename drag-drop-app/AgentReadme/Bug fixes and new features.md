@@ -11,6 +11,16 @@ Hot fix list
 
 1) Note the RO and scorers tend to be retired sailors so the screns need to be simple as possible with least noise. The drag and drop flags, time settigns need to be large. Set defalut times to 1 in start events. on Race officer control panele: tighten up and create more space and bette readability for a greater numebr of start sequences. The ordder after the lap count must be asc. ![alt text](image.png)Include adding option for a 3rd flag, Flag oxes larger on the sailor . Make the lap counters and finishing more compacts, we may have 10-20 boats on the list, suggested 
 20 incorrect previous bug, on the finish sheet, the order of sailors must start with Lap Count asc, so once a sailor complets the lap they move to the bottom of the list, the person doing scoring is
+== CODED 2026-10-16, awaiting human test per process rule (Ctrl+F5 first - JS is cached). Applied:
+row default time 1 min (app.py flag library default), RO panel tightened (grids now lay out
+side-by-side so more start sequences are visible, cell padding reduced, flag/text sizes kept,
+add-start button fixed bottom-right with the same rounded style as the other buttons, active
+countdown border halved, active row timer no longer blows up to 25vw font), 3rd flag slot per row
+(class-start + finish-sheet columns recognise all three slots), finish sheet compact one-line
+sailor rows (class flag on the card, sail number prominent and right-aligned next to the lap
+counter, smaller finish box, ~44px rows), lap-count ASC ordering (completing a lap moves the
+sailor down; finished sailors stay at the bottom by finish time). Regression scripts all pass;
+frontend changes need the human browser test.
 
 ==================
 resolved
@@ -44,13 +54,24 @@ app_state['open_start_time'], record-lap/mark-finish block open sailors until th
 race-status reports open_started/open_flag_in_sequence. Frontend: poller and card creation use
 the backend-reported open_started. Regression: scripts/test_open_flag.py (all tests pass).
 15a flag asset fix - Passed ✅ P Class flag updated pclass.jpg -> pclass.png (new 686x785 image; boat_classes now points at pclass.png; old pclass.jpg removed from static/flags so it no longer appears as a draggable card in the RO flag picker). P (blue peter, p.png) and P Class (pclass.png) are TWO DIFFERENT flags/classes - do not merge them. tempref/recording.jsonl references updated to pclass.png so the replay tool keeps working.
+13 the stray 'nul' file that broke git commits == resolved 2026-10-16 (git-level, not a browser bug): file deleted (it is a reserved Windows device name - Explorer and plain 'del nul' silently fail; Git Bash 'rm' removed it) and 'drag-drop-app/nul' is already in .gitignore, so commits cannot break again even if it reappears. Likely cause: a '> nul' redirect run in a Git Bash session (MSYS creates a real file named nul; cmd treats nul as a device, so the .bat launchers are safe).
+16 requirements: 2 classes in the same start sequence == resolved 2026-10-16: Requirements.md updated (secondary/tertiary flag slots + shared starts). The code already supported it - one class-start POST per start event carries ALL the grid's flags, and every recognised class gets its own finish-sheet column.
 
 
 =============================
 in progress
 
-
-
+6 move the add start button on the RO page to the lower right == CODED 2026-10-16 (fixed
+bottom-right, '+ Add Start', same rounded rectangle as the other buttons; index.html + style.css),
+awaiting human test per process rule
+7 gold/yellow active countdown border halved (4px -> 2px on RO rows; finish-sheet class-started
+cards too) == CODED 2026-10-16, awaiting human test per process rule
+8 start event boxes narrower / more start sequences visible == CODED 2026-10-16 (grids side-by-side
+in auto-fit ~480px columns, cell padding reduced, text and flag boxes unchanged), awaiting human
+test per process rule
+9 finish sailors compact == CODED 2026-10-16 (all data on one line: class flag + name/class +
+sail number prominent right-aligned next to the lap counter + +Lap + lap count + finish box;
+~44px rows so 10-20 boats fit a column), awaiting human test per process rule
 
 14 must allow a late sailor to be added to the race after it has started == regression + replay PASS (sailors signed on AFTER their class start stay visible in their own class column, live until first lap/finish, then join the locked roster race_sailors without duplicating. Regression: scripts/test_late_signon.py; replay of the 23:40 recorded session passes all 15 steps). Awaiting confirmed human test per process rule
 21 The timers are not recording start time = expert results show:
@@ -113,17 +134,9 @@ active
 
 4 the 2 end race buttons are not synched, 1 button on each page must stop all timers and chnage race status from running to ended
 5 reset finish sheet does not reset anything - it should clear lap counts etc.
-6 move the add start button on the race officer page to the lower right, 
-use the same rectangle with rounded edge as all other buttons
-7 the gold/yellow boarders for active count down is very wide/garish, 1/2 the line thickness.
-8 the start event boxes need to be narrower so more start sequences are visisble, reduce cell padding, keep the text and falg boxes the same size
-9 the finish sailors, aslo need to reduce the realestae and show many more sailors, line all data points onto 1 line, sail number is most promitent and right aligned
-close to the lap counter
 
-13 something creates a nul ("C:\Users\anton\flagmachine\drag-drop-app\nul") file that breaks the git commit
 15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
 allowed time per race is approaching
-16 write into requirements that 2 classes caan be in the same start sequence, currenlty the only 1 class can be use at a time.
 17 the finish activates after the first sub timer, the finish sheet must be on the last subtimer in the start event == fixed with bug 21b: class-start now fires only when the LAST row of the start event completes; awaiting human test per process rule
 18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
 19 the open class can not record results and laps == same root cause as bug 12 (finishsheet.js poller re-disabled open-category cards every poll); fix applied with bug 12, awaiting confirmed human test
