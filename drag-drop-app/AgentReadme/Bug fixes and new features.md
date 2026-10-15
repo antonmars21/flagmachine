@@ -25,6 +25,10 @@ checked to race drop to the bottom of the registry list so sailors still to sign
 the top; the chosen sort order applies within each group (CODED 2026-10-16, awaiting human
 test). Regression scripts all pass;
 frontend changes need the human browser test.
+AMENDED 2026-10-16 (2nd RO feedback): class flag image REMOVED from finish-sheet sailor cards
+(screen real estate - the column header already shows the class); finish tick box enlarged to
+36px, the largest that fits the 56px row. Further screen real estate management for 5-class
+courses logged as New Feature 5 (this weekend's regatta: 3-4 classes).
 
 ==================
 resolved
@@ -76,6 +80,7 @@ space with 3-4 start sequences), compact paddings kept. Awaiting re-test per pro
 9 finish sailors compact == CODED 2026-10-16; AMENDED after human test same day: lap counter on
 the LEFT, finish tick box on the FAR RIGHT (prevents accidental finish clicks), all fields on
 one line (class flag, class, name, sail number), fonts/card +25%, lap button + finish box +40%.
+AMENDED AGAIN same day: class flag removed from the cards, finish tick box 36px (max for the row).
 Awaiting re-test per process rule
 
 14 must allow a late sailor to be added to the race after it has started == regression + replay PASS (sailors signed on AFTER their class start stay visible in their own class column, live until first lap/finish, then join the locked roster race_sailors without duplicating. Regression: scripts/test_late_signon.py; replay of the 23:40 recorded session passes all 15 steps). Awaiting confirmed human test per process rule
@@ -168,6 +173,11 @@ allowed time per race is approaching
   Deliberately NOT BroadcastChannel (tab-to-tab messaging only works same-machine; future
   scenarios - start boat, other devices/clubs - need the server-side version). Touch events are
   just clicks, so the touchscreen needs nothing special.
+5 finish-sheet screen real estate management for 5+ classes on the course (this weekend:
+  3-4 classes). Ideas: collapsible/compress class columns, narrower banner, drop the class
+  text from cards when the column already identifies the class (sail number only), reduce
+  per-card padding, hide the 'x sailors' count. Any further real-estate gain beyond the
+  2026-10-16 cosmetic round (flag removed from cards, compact one-line rows) is this feature.
 
 
 

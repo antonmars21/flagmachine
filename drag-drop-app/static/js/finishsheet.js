@@ -195,15 +195,11 @@ function createSailorCard(sailor, col_num, index) {
     const can_record = class_started;
     if (class_started) card.classList.add('class-started');
     
-    const flag_img = sailor.flag_image
-        ? `<img class="sailor-flag" src="/static/flags/${sailor.flag_image}" alt="${sailor.boat_class}">`
-        : '';
     card.innerHTML = `
         <div class="lap-counter">
             <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${can_record ? '' : 'disabled'}>+ Lap</button>
             <div class="lap-value">${sailor.lap_count || 0}</div>
         </div>
-        ${flag_img}
         <span class="sailor-class">${sailor.boat_class}</span>
         <span class="sailor-name">${sailor.short_name}${finished_class}</span>
         <div class="sailor-spacer"></div>
