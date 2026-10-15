@@ -199,17 +199,15 @@ function createSailorCard(sailor, col_num, index) {
         ? `<img class="sailor-flag" src="/static/flags/${sailor.flag_image}" alt="${sailor.boat_class}">`
         : '';
     card.innerHTML = `
-        ${flag_img}
-        <div class="sailor-id">
-            <div class="sailor-name">${sailor.short_name}${finished_class}</div>
-            <div class="sailor-class">${sailor.boat_class}</div>
-        </div>
-        <div class="sailor-spacer"></div>
-        <span class="sail-number">${sailor.sail_no}</span>
         <div class="lap-counter">
             <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${can_record ? '' : 'disabled'}>+ Lap</button>
             <div class="lap-value">${sailor.lap_count || 0}</div>
         </div>
+        ${flag_img}
+        <span class="sailor-class">${sailor.boat_class}</span>
+        <span class="sailor-name">${sailor.short_name}${finished_class}</span>
+        <div class="sailor-spacer"></div>
+        <span class="sail-number">${sailor.sail_no}</span>
         <input type="checkbox" class="finish-checkbox" data-uid="${sailor.uid}" 
             ${sailor.finish_time ? 'checked disabled' : (can_record ? '' : 'disabled')}>
     `;

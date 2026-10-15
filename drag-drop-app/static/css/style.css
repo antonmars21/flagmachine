@@ -288,18 +288,14 @@ body {
 }
 
 /* ========== EVENT GRIDS ========== */
-/* Grids lay out side by side (narrower boxes) so more start sequences
-   are visible at once; falls back to a single full-width column on
-   narrow screens. */
+/* RO feedback 2026-10-16: grids stack vertically full-width - the side-by-side
+   columns lost space with 3-4 start sequences. Compact paddings kept. */
 #event-grids-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
-    gap: 12px;
-    align-items: start;
+    display: block;
 }
 
 .event-grid {
-    margin-bottom: 0;
+    margin-bottom: 12px;
     padding: 10px;
     border-radius: 8px;
     background-color: #121824;

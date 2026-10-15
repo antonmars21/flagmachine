@@ -148,8 +148,8 @@
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            padding: 8px;
+            gap: 8px;
+            padding: 10px;
         }
 
         /* ========== SAILOR CARD (compact one-line row) ========== */
@@ -157,14 +157,14 @@
             background-color: #1a2332;
             border: 2px solid #334155;
             border-radius: 6px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             cursor: grab;
             transition: all 0.2s;
             user-select: none;
             display: flex;
             align-items: center;
-            gap: 8px;
-            min-height: 44px;
+            gap: 10px;
+            min-height: 56px;
         }
 
         .sailor-card:hover {
@@ -190,8 +190,8 @@
         }
 
         .sailor-flag {
-            width: 38px;
-            height: 30px;
+            width: 48px;
+            height: 38px;
             object-fit: contain;
             background: #0f172a;
             border-radius: 3px;
@@ -199,26 +199,23 @@
             flex-shrink: 0;
         }
 
-        .sailor-id {
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
+        .sailor-class {
+            font-size: 13px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .sailor-name {
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 600;
             color: #f8fafc;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-        }
-
-        .sailor-class {
-            font-size: 10px;
-            color: #94a3b8;
-            text-transform: uppercase;
-            white-space: nowrap;
+            min-width: 0;
         }
 
         .sailor-spacer {
@@ -226,7 +223,7 @@
         }
 
         .sail-number {
-            font-size: 18px;
+            font-size: 22px;
             font-weight: 900;
             color: #f59e0b;
             flex-shrink: 0;
@@ -240,22 +237,22 @@
         }
 
         .lap-value {
-            font-size: 16px;
+            font-size: 20px;
             font-weight: bold;
             color: #10b981;
-            min-width: 22px;
+            min-width: 26px;
             text-align: center;
         }
 
         .btn-lap {
-            padding: 5px 10px;
+            padding: 7px 14px;
             background-color: #0369a1;
             color: #fff;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 17px;
             transition: all 0.2s;
         }
 
@@ -268,8 +265,8 @@
         }
 
         .finish-checkbox {
-            width: 22px;
-            height: 22px;
+            width: 30px;
+            height: 30px;
             cursor: pointer;
             accent-color: #10b981;
         }
@@ -304,18 +301,18 @@
             }
             
             .sailor-card {
-                padding: 5px 8px;
-                gap: 6px;
-                min-height: 40px;
+                padding: 6px 10px;
+                gap: 8px;
+                min-height: 50px;
             }
             
             .sail-number {
-                font-size: 16px;
+                font-size: 20px;
             }
 
             .sailor-flag {
-                width: 32px;
-                height: 26px;
+                width: 40px;
+                height: 32px;
             }
         }
     </style>

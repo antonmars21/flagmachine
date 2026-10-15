@@ -12,8 +12,9 @@ Hot fix list
 1) Note the RO and scorers tend to be retired sailors so the screns need to be simple as possible with least noise. The drag and drop flags, time settigns need to be large. Set defalut times to 1 in start events. on Race officer control panele: tighten up and create more space and bette readability for a greater numebr of start sequences. The ordder after the lap count must be asc. ![alt text](image.png)Include adding option for a 3rd flag, Flag oxes larger on the sailor . Make the lap counters and finishing more compacts, we may have 10-20 boats on the list, suggested 
 20 incorrect previous bug, on the finish sheet, the order of sailors must start with Lap Count asc, so once a sailor complets the lap they move to the bottom of the list, the person doing scoring is
 == CODED 2026-10-16, awaiting human test per process rule (Ctrl+F5 first - JS is cached). Applied:
-row default time 1 min (app.py flag library default), RO panel tightened (grids now lay out
-side-by-side so more start sequences are visible, cell padding reduced, flag/text sizes kept,
+row default time 1 min (app.py flag library default), RO panel tightened (cell padding reduced,
+flag/text sizes kept, grids stay FULL-WIDTH VERTICAL stacking per RO feedback 2026-10-16 -
+side-by-side columns lost space with 3-4 start sequences),
 add-start button fixed bottom-right with the same rounded style as the other buttons, active
 countdown border halved, active row timer no longer blows up to 25vw font), 3rd flag slot per row
 (class-start + finish-sheet columns recognise all three slots), finish sheet compact one-line
@@ -66,12 +67,13 @@ bottom-right, '+ Add Start', same rounded rectangle as the other buttons; index.
 awaiting human test per process rule
 7 gold/yellow active countdown border halved (4px -> 2px on RO rows; finish-sheet class-started
 cards too) == CODED 2026-10-16, awaiting human test per process rule
-8 start event boxes narrower / more start sequences visible == CODED 2026-10-16 (grids side-by-side
-in auto-fit ~480px columns, cell padding reduced, text and flag boxes unchanged), awaiting human
-test per process rule
-9 finish sailors compact == CODED 2026-10-16 (all data on one line: class flag + name/class +
-sail number prominent right-aligned next to the lap counter + +Lap + lap count + finish box;
-~44px rows so 10-20 boats fit a column), awaiting human test per process rule
+8 start event boxes narrower / more start sequences visible == CODED 2026-10-16; human test
+feedback same day: side-by-side columns REVERTED to full-width vertical stacking (RO: loses
+space with 3-4 start sequences), compact paddings kept. Awaiting re-test per process rule
+9 finish sailors compact == CODED 2026-10-16; AMENDED after human test same day: lap counter on
+the LEFT, finish tick box on the FAR RIGHT (prevents accidental finish clicks), all fields on
+one line (class flag, class, name, sail number), fonts/card +25%, lap button + finish box +40%.
+Awaiting re-test per process rule
 
 14 must allow a late sailor to be added to the race after it has started == regression + replay PASS (sailors signed on AFTER their class start stay visible in their own class column, live until first lap/finish, then join the locked roster race_sailors without duplicating. Regression: scripts/test_late_signon.py; replay of the 23:40 recorded session passes all 15 steps). Awaiting confirmed human test per process rule
 21 The timers are not recording start time = expert results show:
