@@ -12,6 +12,10 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
+# Serializes race auto-creation and roster locking: simultaneous class-start
+# POSTs (multi-flag start event) must not each create their own race (bug 21).
+RACE_STATE_LOCK = threading.Lock()
+
 # ==================== TEST RECORDING (bug reproduction) ====================
 # Records the API calls produced by UI button clicks so a race-day session can
 # be replayed instantly (scripts/replay_race.py) without waiting for countdowns.
@@ -153,6 +157,17 @@ def init_finishsheet_tables():
         FOREIGN KEY(race_id) REFERENCES races(race_id),
         FOREIGN KEY(class_id) REFERENCES boat_classes(class_id),
         UNIQUE(race_id, class_id)
+    )''')
+    
+    # Open Category start per race (race_class_starts.class_id is NOT NULL,
+    # so the open fleet's start lives in its own table)
+    c.execute('''CREATE TABLE IF NOT EXISTS race_open_starts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id INTEGER NOT NULL UNIQUE,
+        start_time TEXT NOT NULL,
+        sequence_number INTEGER DEFAULT 1,
+        source TEXT DEFAULT 'flag_machine',
+        FOREIGN KEY(race_id) REFERENCES races(race_id)
     )''')
     
     # Backward-compat: add sequence_number column if it doesn't exist
@@ -341,7 +356,8 @@ def get_class_sequence_mapping():
         c = conn.cursor()
         c.execute('SELECT class_id, sequence_number FROM race_class_starts WHERE race_id = ?', (race_id,))
         for row in c.fetchall():
-            mapping[row['class_id']] = row['sequence_number']
+            if row['class_id'] is not None:
+                mapping[row['class_id']] = row['sequence_number']
         conn.close()
     
     # Then, get sequence numbers from current Flag Machine sequence for classes that haven't started
@@ -841,14 +857,15 @@ def start_race():
     selected_sailors = payload.get('selected_sailors', [])
     
     try:
-        # Create race record if none active
-        race_id = app_state.get('race_id')
-        if not race_id:
-            c.execute('INSERT INTO races (status) VALUES (?)', ('RUNNING',))
-            conn.commit()
-            race_id = c.lastrowid
-            app_state['race_id'] = race_id
-            app_state['race_start_timestamp'] = datetime.now().isoformat()
+        # Create race record if none active (locked - bug 21)
+        with RACE_STATE_LOCK:
+            race_id = app_state.get('race_id')
+            if not race_id:
+                c.execute('INSERT INTO races (status) VALUES (?)', ('RUNNING',))
+                conn.commit()
+                race_id = c.lastrowid
+                app_state['race_id'] = race_id
+                app_state['race_start_timestamp'] = datetime.now().isoformat()
         
         # If no explicit selection passed, default to all sailors marked racing_today
         if not selected_sailors:
@@ -898,99 +915,115 @@ def start_race():
 
 @app.route('/api/class-start', methods=['POST'])
 def class_start():
-    """Called by Flag Machine when a countdown row hits 00:00 for a given flag.
-    Auto-creates race if none active (using all currently loaded sailors),
-    then records the start time for that boat class.
+    """Called by the Flag Machine when a start event (grid) countdown FULLY
+    completes - i.e. after the last sub-timer of the flag sequence. Accepts
+    flag_image (single flag, backward compatible) or flag_images (all flags
+    of the start event). Each flag that matches a boat class records that
+    class's start; openclass.* records the Open Category start; signal flags
+    with no boat class behind them (p.png, Dflag, postpone...) are ignored.
+    Auto-creates the race if none is active - under a lock, so simultaneous
+    starts never create two races (bug 21).
     """
+    payload = request.get_json() or {}
+    sequence_number = payload.get('sequence_number', 1)
+
+    flags = payload.get('flag_images')
+    if not flags and payload.get('flag_image'):
+        flags = [payload['flag_image']]
+    # Dedupe, preserve order, drop empties
+    flags = [f for f in dict.fromkeys(flags) if f] if flags else []
+
+    if not flags:
+        return jsonify({"status": "error", "message": "flag_image required"}), 400
+
     conn = get_db_connection()
     c = conn.cursor()
-    
-    payload = request.get_json()
-    flag_image = payload.get('flag_image') if payload else None
-    sequence_number = payload.get('sequence_number', 1) if payload else 1
-    
-    if not flag_image:
-        conn.close()
-        return jsonify({"status": "error", "message": "flag_image required"}), 400
-    
+    results = []
     try:
-        # Open-class flag: no boat class behind it - the Open Category starts
-        # when this countdown hits 00:00. First trigger wins (idempotent).
-        flag_base = os.path.splitext(os.path.basename(flag_image))[0].lower()
-        if flag_base in OPEN_FLAG_NAMES:
-            if not app_state.get('race_id'):
+        with RACE_STATE_LOCK:
+            # Auto-create race if none active (locked - bug 21)
+            race_id = app_state.get('race_id')
+            if not race_id:
                 c.execute('INSERT INTO races (status) VALUES (?)', ('RUNNING',))
                 conn.commit()
-                app_state['race_id'] = c.lastrowid
+                race_id = c.lastrowid
+                app_state['race_id'] = race_id
                 app_state['race_start_timestamp'] = datetime.now().isoformat()
-            if not app_state.get('open_start_time'):
-                app_state['open_start_time'] = datetime.now().isoformat()
-            conn.close()
-            return jsonify({
-                "status": "success",
-                "open_start": True,
-                "start_time": app_state['open_start_time']
-            })
 
-        # Look up boat class by flag_image (case-insensitive, defense in depth)
-        c.execute('SELECT class_id, class_name FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
-        row = c.fetchone()
-        if not row:
-            conn.close()
-            return jsonify({"status": "error", "message": f"No boat class found for flag_image={flag_image}"}), 404
-        
-        class_id = row['class_id']
-        class_name = row['class_name']
-        
-        # Auto-create race if none active
-        race_id = app_state.get('race_id')
-        if not race_id:
-            c.execute('INSERT INTO races (status) VALUES (?)', ('RUNNING',))
-            conn.commit()
-            race_id = c.lastrowid
-            app_state['race_id'] = race_id
-            app_state['race_start_timestamp'] = datetime.now().isoformat()
-        
-        # Lock in the roster ONLY for this class's sailors who are racing_today right now
-        # (other not-yet-started classes remain live/editable via the registry sidebar)
-        c.execute('SELECT uid FROM sailors WHERE racing_today = 1 AND class_id = ?', (class_id,))
-        class_uids = [r['uid'] for r in c.fetchall()]
-        for uid in class_uids:
-            c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
-            if not c.fetchone():
+            for flag_image in flags:
+                # Open-class flag: no boat class behind it - the Open Category
+                # starts when this start event fires. First trigger wins.
+                flag_base = os.path.splitext(os.path.basename(flag_image))[0].lower()
+                if flag_base in OPEN_FLAG_NAMES:
+                    if not app_state.get('open_start_time'):
+                        app_state['open_start_time'] = datetime.now().isoformat()
+                        # Persist the open start so CSV exports keep the open
+                        # fleet's start time (UNIQUE(race_id) -> idempotent)
+                        c.execute('''
+                            INSERT OR IGNORE INTO race_open_starts (race_id, start_time, sequence_number)
+                            VALUES (?, ?, ?)
+                        ''', (race_id, app_state['open_start_time'], sequence_number))
+                    results.append({
+                        "flag_image": flag_image,
+                        "open_start": True,
+                        "start_time": app_state['open_start_time']
+                    })
+                    continue
+
+                # Look up boat class by flag_image (case-insensitive)
+                c.execute('SELECT class_id, class_name FROM boat_classes WHERE LOWER(flag_image) = LOWER(?)', (flag_image,))
+                row = c.fetchone()
+                if not row:
+                    # Signal flag (preparatory, D flag, postpone...) - not a class start
+                    results.append({"flag_image": flag_image, "skipped": True})
+                    continue
+
+                class_id = row['class_id']
+                class_name = row['class_name']
+
+                # Lock in the roster ONLY for this class's sailors who are
+                # racing_today right now (late sign-ons stay live - bug 14)
+                c.execute('SELECT uid FROM sailors WHERE racing_today = 1 AND class_id = ?', (class_id,))
+                class_uids = [r['uid'] for r in c.fetchall()]
+                for uid in class_uids:
+                    c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
+                    if not c.fetchone():
+                        c.execute('''
+                            INSERT INTO race_sailors (race_id, uid, lap_count, placement)
+                            VALUES (?, ?, 0, NULL)
+                        ''', (race_id, uid))
+
+                # Record class start time (idempotent - first trigger wins)
+                now_iso = datetime.now().isoformat()
                 c.execute('''
-                    INSERT INTO race_sailors (race_id, uid, lap_count, placement)
-                    VALUES (?, ?, 0, NULL)
-                ''', (race_id, uid))
-        conn.commit()
-        
-        # Record class start time (idempotent - first trigger wins)
-        now_iso = datetime.now().isoformat()
-        c.execute('''
-            INSERT OR IGNORE INTO race_class_starts (race_id, class_id, start_time, sequence_number, source)
-            VALUES (?, ?, ?, ?, 'flag_machine')
-        ''', (race_id, class_id, now_iso, sequence_number))
-        conn.commit()
-        
-        # Update in-memory state (use existing DB value if already set)
-        c.execute('''
-            SELECT start_time FROM race_class_starts WHERE race_id = ? AND class_id = ?
-        ''', (race_id, class_id))
-        actual_start = c.fetchone()['start_time']
-        app_state['class_start_times'][str(class_id)] = actual_start
-        
-        conn.close()
-        
-        return jsonify({
-            "status": "success",
-            "race_id": race_id,
-            "class_id": class_id,
-            "class_name": class_name,
-            "start_time": actual_start
-        })
+                    INSERT OR IGNORE INTO race_class_starts (race_id, class_id, start_time, sequence_number, source)
+                    VALUES (?, ?, ?, ?, 'flag_machine')
+                ''', (race_id, class_id, now_iso, sequence_number))
+                c.execute('''
+                    SELECT start_time FROM race_class_starts WHERE race_id = ? AND class_id = ?
+                ''', (race_id, class_id))
+                actual_start = c.fetchone()['start_time']
+                app_state['class_start_times'][str(class_id)] = actual_start
+
+                results.append({
+                    "class_id": class_id,
+                    "class_name": class_name,
+                    "start_time": actual_start
+                })
+
+            conn.commit()
     except Exception as e:
         conn.close()
         return jsonify({"status": "error", "message": str(e)}), 400
+
+    conn.close()
+    return jsonify({
+        "status": "success",
+        "race_id": app_state.get('race_id'),
+        "open_start": any(r.get('open_start') for r in results),
+        "starts": results
+    })
+
 
 @app.route('/api/race-status')
 def race_status():
@@ -1073,17 +1106,25 @@ def clear_registry():
 
 @app.route('/api/reset-finish-sheet', methods=['POST'])
 def reset_finish_sheet():
-    """Reset finish sheet - clear all finish times and orders."""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE sailors SET finish_order = NULL, finish_time = NULL")
-    c.execute("UPDATE race_sailors SET finish_time = NULL, placement = NULL")
-    conn.commit()
-    conn.close()
-    # Also clear in-memory sequence
-    app_state['sequence'] = []
+    """Reset the finish sheet for the next race of the day (bug 22).
+    Clears the race state so the sheet is READY again. Recorded results
+    (laps, finishes, race history) are kept in the database, and the Flag
+    Machine sequence is never touched (Q3 decision). Requires the race to
+    be ended first."""
+    if app_state.get('race_id') and not app_state.get('race_ended'):
+        return jsonify({
+            "status": "error",
+            "message": "Race is still running - end the race before resetting the finish sheet"
+        }), 400
+    app_state['race_id'] = None
+    app_state['race_start_timestamp'] = None
+    app_state['class_start_times'] = {}
+    app_state['open_start_time'] = None
+    app_state['race_ended'] = False
+    app_state['race_end_timestamp'] = None
     app_state['status'] = 'READY'
-    return jsonify({"status": "success", "message": "Finish sheet reset"})
+    return jsonify({"status": "success", "message": "Finish sheet reset - ready for the next race"})
+
 
 @app.route('/api/export-race-csv')
 def export_race_csv():
@@ -1116,6 +1157,16 @@ def export_race_csv():
     rows = c.fetchall()
     
     # Get lap times for all sailors in this race
+    # Open-category sailors have no class start row - their start is the open
+    # start (class_id NULL in race_class_starts), or the race's first start
+    # when no open flag was used
+    c.execute('''SELECT start_time, sequence_number FROM race_open_starts
+                 WHERE race_id = ? ORDER BY start_time LIMIT 1''', (race_id,))
+    open_start = c.fetchone()
+    if not open_start:
+        c.execute('''SELECT start_time, sequence_number FROM race_class_starts
+                     WHERE race_id = ? ORDER BY start_time LIMIT 1''', (race_id,))
+        open_start = c.fetchone()
     c.execute('SELECT uid, lap_number, timestamp FROM lap_records WHERE race_id = ? ORDER BY uid, lap_number', (race_id,))
     lap_records = c.fetchall()
     conn.close()
@@ -1138,11 +1189,11 @@ def export_race_csv():
         lap_times_str = '; '.join(lap_times) if lap_times else ''
         
         writer.writerow([
-            row['sequence_number'] if row['sequence_number'] is not None else '',
+            row['sequence_number'] if row['sequence_number'] is not None else ((open_start['sequence_number'] if open_start else '') or ''),
             row['class_name'] or 'Unknown',
             row['short_name'],
             row['sail_no'],
-            row['class_start_time'] or '',
+            row['class_start_time'] or (open_start['start_time'] if open_start else ''),
             row['lap_count'],
             lap_times_str,
             row['finish_time'] or '',
@@ -1193,13 +1244,15 @@ def record_lap():
     
     try:
         # Ensure the sailor belongs to this race (open-category sailors are
-        # not locked in by any class start, so join them on first interaction)
-        c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
-        if not c.fetchone():
-            c.execute('''
-                INSERT INTO race_sailors (race_id, uid, lap_count, placement)
-                VALUES (?, ?, 0, NULL)
-            ''', (race_id, uid))
+        # not locked in by any class start, so join them on first interaction).
+        # Locked: concurrent taps must not double-insert the sailor (bug 21).
+        with RACE_STATE_LOCK:
+            c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
+            if not c.fetchone():
+                c.execute('''
+                    INSERT INTO race_sailors (race_id, uid, lap_count, placement)
+                    VALUES (?, ?, 0, NULL)
+                ''', (race_id, uid))
 
         # Increment lap count
         c.execute('''
@@ -1263,13 +1316,15 @@ def mark_finish():
     
     try:
         # Ensure the sailor belongs to this race (open-category sailors are
-        # not locked in by any class start, so join them on first interaction)
-        c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
-        if not c.fetchone():
-            c.execute('''
-                INSERT INTO race_sailors (race_id, uid, lap_count, placement)
-                VALUES (?, ?, 0, NULL)
-            ''', (race_id, uid))
+        # not locked in by any class start, so join them on first interaction).
+        # Locked: concurrent taps must not double-insert the sailor (bug 21).
+        with RACE_STATE_LOCK:
+            c.execute('SELECT id FROM race_sailors WHERE race_id = ? AND uid = ?', (race_id, uid))
+            if not c.fetchone():
+                c.execute('''
+                    INSERT INTO race_sailors (race_id, uid, lap_count, placement)
+                    VALUES (?, ?, 0, NULL)
+                ''', (race_id, uid))
 
         finish_time = datetime.now().isoformat()
         c.execute('''

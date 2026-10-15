@@ -87,6 +87,20 @@ r = client.post('/api/mark-finish', json={'uid': zephyr_uid})
 assert r.status_code == 200, f'open finish still blocked: {r.get_json()}'
 print('open flag fired: open sailor activated, lap + finish accepted')
 
+# 4b. The open start must be PERSISTED (class_id NULL) and appear in the CSV
+conn = sqlite3.connect(SCRATCH)
+open_rows = list(conn.execute(
+    'SELECT start_time, sequence_number FROM race_open_starts WHERE race_id = ?',
+    (status['race_id'],)))
+conn.close()
+assert len(open_rows) == 1 and open_rows[0][1] == 2, f'open start row wrong: {open_rows}'
+open_start_time, open_seq = open_rows[0]
+csv_text = client.get('/api/export-race-csv').get_data(as_text=True)
+zephyr_line = next(l for l in csv_text.splitlines() if 'Zephyr' in l or zephyr_uid in l)
+assert open_start_time in zephyr_line, f'open start time missing from CSV: {zephyr_line}'
+assert zephyr_line.startswith(str(open_seq) + ','), f'open sequence number missing from CSV: {zephyr_line}'
+print('open start persisted and exported: start time + sequence in CSV')
+
 # 5. Reset clears the open start state too
 client.post('/api/reset-race')
 status = client.get('/api/race-status').get_json()

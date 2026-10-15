@@ -391,6 +391,10 @@ async function pollClassStarts() {
         if (state.race_active) {
             document.getElementById('btn-start-race').disabled = true;
             document.getElementById('btn-end-race').disabled = false;
+        } else if (!state.race_ended) {
+            // READY for the next race of the day (after end+reset or reset-race)
+            document.getElementById('btn-start-race').disabled = false;
+            document.getElementById('btn-end-race').disabled = true;
         }
     } catch (error) {
         console.error("Error polling class starts:", error);
@@ -650,14 +654,16 @@ async function initRegistrySidebar() {
     // Reset Finish Sheet button
     if (btnResetFinishSheet) {
         btnResetFinishSheet.addEventListener('click', () => {
-            if (!confirm('Reset the finish sheet?\nAll finish times and orders will be cleared.')) return;
+            if (!confirm('Reset the finish sheet?\nThe sheet will be cleared and made ready for the next race.\nRecorded results are kept in the database.')) return;
             fetch('/api/reset-finish-sheet', { method: 'POST' })
                 .then(res => {
                     if (res.ok) {
                         loadRegistryList();
-                        if (!state.race_active) loadAndRenderSailors();
+                        loadAndRenderSailors();
                         // Reapply filters after resetting finish sheet
                         setTimeout(applyRegistryFilters, 100);
+                    } else {
+                        res.json().then(d => alert(d.message || 'Reset failed')).catch(() => {});
                     }
                 });
         });

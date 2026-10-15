@@ -5,6 +5,13 @@ test. Passing regression scripts alone is not enough.
 
 **Bugs
 
+=================
+
+Hot fix list
+
+1) Note the RO and scorers tend to be retired sailors so the screns need to be simple as possible with least noise. The drag and drop flags, time settigns need to be large. Set defalut times to 1 in start events. on Race officer control panele: tighten up and create more space and bette readability for a greater numebr of start sequences. The ordder after the lap count must be asc. ![alt text](image.png)Include adding option for a 3rd flag, Flag oxes larger on the sailor . Make the lap counters and finishing more compacts, we may have 10-20 boats on the list, suggested 
+20 incorrect previous bug, on the finish sheet, the order of sailors must start with Lap Count asc, so once a sailor complets the lap they move to the bottom of the list, the person doing scoring is
+
 ==================
 resolved
 
@@ -56,8 +63,50 @@ Sequence	Class	Sailor	Sail No	Start Time	Laps	Lap Times	Finish Time	Race End Tim
 NOTE the start time and lap Times MUST be running on the total start sequence time, NOT the fist flag timer, 
 check document in the start time there will be a sequence of flags, 
 running ususally class flag for 1 minute, class flag plus P.png, for the second minute and dflag.png for the last minute.
+ROOT CAUSES + FIXES (2026-10-15, awaiting human test per process rule):
+a) RACE CONDITION (why start times were blank): when a start event had Ilca 6 + Ilca 7 flags,
+both class-start POSTs fired simultaneously, both saw "no active race" and EACH created its own
+race (races 48 + 49 in the DB) - class starts were split between the two races and the CSV
+exported the wrong one. Fix: one class-start POST per start event with ALL the grid's flags,
+and a server-side RACE_STATE_LOCK so race auto-creation and roster locking can never race.
+b) START AT END OF FULL SEQUENCE (bug 17 included): class-start now fires only when the LAST
+row of a start event completes (class flag -> +P -> D flag sequence all done), not when the
+first sub-timer hits 00:00. Signal flags in the grid (Dflag, postpone...) are ignored by the
+server. CORRECTION (RO, 2026-10-15): p.png is the blue peter SIGNAL flag (letter P, preparatory),
+NOT the P Class racing flag - the P Class dinghy is a boat class with flag pclass.png
+(Sailwave class name 'P Class'). Fixed: boat_classes class_id 5 'P' wrongly claimed p.png
+(spurious row, zero sailors) - row DELETED along with 9 bogus class-5 race_class_starts rows
+from old manual-backup test races (no P sailor ever raced); 'P': 'p.png' removed from
+DEFAULT_FLAG_MAPPINGS in scripts/import_sailwave.py so a Sailwave refresh can never re-apply it.
+NOTE: a Sailwave refresh with the OLD script re-applied p.png once before the row was deleted.
+If a 'P' class row ever reappears in boat_classes, delete it - the import mapping is removed,
+so a refresh cannot recreate it.
+Regression: scripts/test_start_event.py now asserts p.png and Dflag are both skipped.
+Regression: scripts/test_start_event.py (single race from concurrent starts, signal flags
+skipped, CSV start times present).
+HUMAN TEST 2026-10-15 23:44: Start 1 (Ilca 6, full 3-flag sequence) PASSED - start time
+23:44:38 recorded for both Ilca 6 sailors, sequence 1 in CSV. ONE FAIL REMAINING: Open Category
+sailors (Emma, Victoria sailing open) had blank Start Time + Sequence in the CSV.
+c) FIX (2026-10-15): the open start was only stored in memory (app_state) and never persisted -
+the CSV export joins on race_class_starts (class_id NOT NULL), so open sailors always exported
+blank. New table race_open_starts (race_id UNIQUE, start_time, sequence_number): the openclass
+flag start is persisted there when it fires, and the CSV export falls back to it for sailors
+with no class start row (falls back to the race's earliest class start if no open flag was
+used). Sequence number also falls back, so open sailors now show the open flag's start number.
+Regression: scripts/test_open_flag.py 4b (open start row + start time + sequence in CSV).
+Awaiting human re-test of the CSV export.
 
 22 the sailor registry reset race did not clear the highlighted finish boxes and not ready for the next race of the day
+== FIXED 2026-10-15, awaiting human test per process rule. Root cause: the registry sidebar Reset
+button called /api/reset-finish-sheet, which wiped finish times in the DB and cleared the Flag
+Machine sequence but left race_id set - so the UI skipped its re-render (gated on race not active)
+and the green finished cards stayed on screen. New rule: reset-finish-sheet REFUSES while the
+race is still running ("end the race first"); after the race is ended it clears the race state
+(race_id, class start times, open start, end flags) so the sheet is READY for the next race of
+the day, while keeping all recorded laps/finishes/race history in the DB and NEVER touching the
+Flag Machine sequence. Frontend: the registry Reset button now always re-renders the sheet and
+shows the server message on failure; the Start button re-enables once the sheet is READY.
+Regression: scripts/test_start_event.py sections 4-6.
 ======================
 active
 
@@ -75,10 +124,10 @@ close to the lap counter
 15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
 allowed time per race is approaching
 16 write into requirements that 2 classes caan be in the same start sequence, currenlty the only 1 class can be use at a time.
-17 the finish activates after the first sub timer, the finish sheet must be on the last subtimer in the start event 
+17 the finish activates after the first sub timer, the finish sheet must be on the last subtimer in the start event == fixed with bug 21b: class-start now fires only when the LAST row of the start event completes; awaiting human test per process rule
 18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
 19 the open class can not record results and laps == same root cause as bug 12 (finishsheet.js poller re-disabled open-category cards every poll); fix applied with bug 12, awaiting confirmed human test
-20 incorrect previous bug, on the finish sheet, the order of sailors must start with Lap Count asc, so once a sailor complets the lap they move to the bottom of the list, the person doing scoring is
+
  workign with the sailors at the top of the list as the approach lap completion. 
 
 **New Freatures

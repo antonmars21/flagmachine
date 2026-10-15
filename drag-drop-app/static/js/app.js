@@ -457,12 +457,21 @@ function updateCountdown() {
             fetch('/update-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active_id: it.id, grid_index: it.grid_index }) }).catch(console.error);
         }
         if (os !== 'CLEAR' && it.status === 'CLEAR') {
-            // Countdown hit 00:00 for this flag's class -> notify Finish Sheet.
-            // If a secondary flag is also present (multiple classes starting in the same slot),
-            // fire a class-start for that class too.
-            fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.flag_image, sequence_number: it.grid_index }) }).catch(console.error);
-            if (it.secondary_flag_image) {
-                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_image: it.secondary_flag_image, sequence_number: it.grid_index }) }).catch(console.error);
+            // A sub-timer completed. The class START is the end of the start
+            // event's FULL flag sequence (class flag, +P, D flag...), so only
+            // notify the Finish Sheet when the LAST row of this grid completes.
+            // One POST with ALL the grid's flags: the server records a start for
+            // each boat class it recognises and ignores signal flags (p.png, Dflag).
+            const grid = it.grid_index || 1;
+            const gridRows = orderedSequence.filter(r => (r.grid_index || 1) === grid);
+            const lastOfGrid = gridRows[gridRows.length - 1];
+            if (lastOfGrid && lastOfGrid.id === it.id) {
+                const flags = [];
+                gridRows.forEach(r => {
+                    if (r.flag_image) flags.push(r.flag_image);
+                    if (r.secondary_flag_image) flags.push(r.secondary_flag_image);
+                });
+                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_images: flags, sequence_number: grid }) }).catch(console.error);
             }
         }
         const re = document.getElementById(it.id);

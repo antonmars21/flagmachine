@@ -37,7 +37,8 @@ DEFAULT_FLAG_MAPPINGS = {
     'ILCA 7': 'ilca7.png',
     'STARLING': 'starling.png',
     'OPTIMIST': 'optimist.png',
-    'P': 'p.png',
+    # 'P': 'p.png' removed - p.png is the blue peter SIGNAL flag (preparatory),
+    # NOT a class flag. The P Class dinghy fleet uses pclass.png ('P Class').
     'ZEPHYR': 'zephyr.png',
     '420': '420.png',
     '470': '470.png',
