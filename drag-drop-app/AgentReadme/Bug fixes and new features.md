@@ -20,7 +20,10 @@ countdown border halved, active row timer no longer blows up to 25vw font), 3rd 
 (class-start + finish-sheet columns recognise all three slots), finish sheet compact one-line
 sailor rows (class flag on the card, sail number prominent and right-aligned next to the lap
 counter, smaller finish box, ~44px rows), lap-count ASC ordering (completing a lap moves the
-sailor down; finished sailors stay at the bottom by finish time). Regression scripts all pass;
+sailor down; finished sailors stay at the bottom by finish time). Registry sidebar: sailors
+checked to race drop to the bottom of the registry list so sailors still to sign on stay at
+the top; the chosen sort order applies within each group (CODED 2026-10-16, awaiting human
+test). Regression scripts all pass;
 frontend changes need the human browser test.
 
 ==================

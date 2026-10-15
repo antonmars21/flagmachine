@@ -766,9 +766,13 @@ function applyRegistryFilters() {
         }
     });
     
-    // Apply sorting
-    if (sortBy && visibleRows.length > 0) {
-        visibleRows.sort((a, b) => {
+    // Sort: sailors checked as racing today DROP TO THE BOTTOM of the list so
+    // sailors still to sign on stay at the top (RO hotfix 2026-10-16). The chosen
+    // sort order applies within each group; the default order keeps the
+    // registry's original order within each group.
+    if (visibleRows.length > 0) {
+        const signedRank = r => r.classList.contains('signed-on') ? 1 : 0;
+        const byCriterion = (a, b) => {
             if (sortBy === "name") {
                 const nameA = (a.dataset.shortName || a.dataset.sailorName || a.querySelector('.sailor-primary')?.textContent || "").toLowerCase();
                 const nameB = (b.dataset.shortName || b.dataset.sailorName || b.querySelector('.sailor-primary')?.textContent || "").toLowerCase();
@@ -787,7 +791,8 @@ function applyRegistryFilters() {
                 return nameA.localeCompare(nameB);
             }
             return 0;
-        });
+        };
+        visibleRows.sort((a, b) => signedRank(a) - signedRank(b) || byCriterion(a, b));
         
         // Re-append sorted rows to maintain visibility
         const container = document.getElementById('registry-list');
