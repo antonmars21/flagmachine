@@ -776,7 +776,8 @@ def toggle_racing():
 
 @app.route('/api/add-sailor', methods=['POST'])
 def add_sailor():
-    """Add a new sailor to the registry."""
+    """Add a new sailor to the registry. UID is optional - auto-generated as
+    SL-<sail_no> (Sailwave convention), suffixed -2/-3... if already taken."""
     payload = request.get_json() or {}
     uid = (payload.get('uid') or '').strip()
     sailor_name = (payload.get('sailor_name') or '').strip()
@@ -786,11 +787,40 @@ def add_sailor():
     handicap = payload.get('handicap', 1.0)
     seed = payload.get('seed', 0)
     
-    if not uid or not sailor_name:
-        return jsonify({"status": "error", "message": "UID and Sailor Name are required"}), 400
+    if not sailor_name or not sail_no:
+        return jsonify({"status": "error", "message": "Sailor Name and Sail No are required"}), 400
     
     conn = get_db_connection()
     c = conn.cursor()
+    
+    # A duplicate sail number means the sailor is almost certainly already
+    # registered (sail_no is UNIQUE). Point the RO at the existing row instead
+    # of creating a confusing duplicate.
+    c.execute('SELECT uid, short_name FROM sailors WHERE sail_no = ?', (sail_no,))
+    dup_sail = c.fetchone()
+    if dup_sail:
+        conn.close()
+        return jsonify({"status": "error",
+                        "message": f"Sail number {sail_no} is already in the registry "
+                                   f"({dup_sail['short_name']}, UID {dup_sail['uid']}). Sign them on "
+                                   f"from the list instead of adding again - clear the search box "
+                                   f"if you cannot see them."}), 400
+    
+    if uid:
+        c.execute('SELECT short_name FROM sailors WHERE uid = ?', (uid,))
+        if c.fetchone():
+            conn.close()
+            return jsonify({"status": "error",
+                            "message": f"UID '{uid}' already exists. Leave the UID box blank "
+                                       f"and one will be chosen automatically."}), 400
+    else:
+        base = f'SL-{sail_no}'
+        uid = base
+        n = 2
+        while c.execute('SELECT 1 FROM sailors WHERE uid = ?', (uid,)).fetchone():
+            uid = f'{base}-{n}'
+            n += 1
+    
     try:
         c.execute('SELECT class_id FROM boat_classes WHERE LOWER(class_name) = LOWER(?)', (boat_class,))
         class_row = c.fetchone()

@@ -83,6 +83,19 @@ one line (class flag, class, name, sail number), fonts/card +25%, lap button + f
 AMENDED AGAIN same day: class flag removed from the cards, finish tick box 36px (max for the row).
 Awaiting re-test per process rule
 
+23 cannot add a new sailor on the Dell - keeps saying SL-2045 not available (found 2026-10-16,
+regatta prep) == FIXED same day, awaiting human test per process rule. How UIDs work: uid is the
+sailors PRIMARY KEY, Sailwave convention SL-<sail no> (e.g. SL-2045), and sail_no is also UNIQUE.
+Root cause: the first add of sail 2045 had ALREADY SUCCEEDED, but the registry's saved search
+filter (persisted in localStorage) hid the new row, so the RO retried and hit the duplicate -
+the old error ("A sailor with UID already exists") never said the sailor was already registered.
+Fix: (a) UID field in the Add form is now OPTIONAL - blank auto-generates SL-<sail no>, suffixed
+-2/-3... if taken; (b) duplicate sail number returns an actionable message naming the existing
+sailor and UID ("sign them on from the list - clear the search box"); (c) a successful add clears
+the saved search/class filters so the new sailor is immediately visible. Immediate workaround for
+the operator: clear the registry search box, type 2045, the sailor is already there - just tick
+Racing Today. Regression: tempref/test_add_sailor.py (7 checks pass).
+
 14 must allow a late sailor to be added to the race after it has started == regression + replay PASS (sailors signed on AFTER their class start stay visible in their own class column, live until first lap/finish, then join the locked roster race_sailors without duplicating. Regression: scripts/test_late_signon.py; replay of the 23:40 recorded session passes all 15 steps). Awaiting confirmed human test per process rule
 21 The timers are not recording start time = expert results show:
 Sequence	Class	Sailor	Sail No	Start Time	Laps	Lap Times	Finish Time	Race End Time

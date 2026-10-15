@@ -841,6 +841,13 @@ async function handleAddSailorSubmit(e) {
         if (data.status === 'success') {
             form.reset();
             document.getElementById('add-sailor-form').classList.add('hidden');
+            // Clear saved filters so the new sailor is immediately visible:
+            // a stale search filter previously hid the new row, the RO retried,
+            // and the retry failed on the duplicate sail number.
+            const searchInput = document.getElementById('registry-search');
+            if (searchInput) { searchInput.value = ''; localStorage.setItem('registry_search_query', ''); }
+            const classFilterEl = document.getElementById('classFilter');
+            if (classFilterEl) { classFilterEl.value = ''; localStorage.setItem('registry_class_filter', ''); }
             await loadRegistryList();
         } else {
             alert(data.message || 'Could not add sailor.');
