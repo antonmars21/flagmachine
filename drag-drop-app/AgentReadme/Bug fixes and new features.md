@@ -173,6 +173,32 @@ AMENDED 2026-10-16 (2nd RO feedback): class flag image REMOVED from finish-sheet
 36px, the largest that fits the 56px row. Further screen real estate management for 5-class
 courses logged as New Feature 5 (this weekend's regatta: 3-4 classes).
 
+6 add a sound file to laptop speaker with count = implemented   ✅d
+own at each minute interval then on the final minute 30 seconds 20 seconds 10 seconds and final each secind 5,4,3,2,1,0
+This is for the race officers, so they cam watch the startline and look for silors flase start and not watch the screen
+== CODED 2026-10-16, awaiting human test per process rule. Client-side only: Web Audio beeps
+synthesized in app.js (no sound files, no backend, no API changes). Cue pattern per active
+sub-timer row: single beep at each whole-minute mark (fires as each row goes active), double
+beep at 30/20/10s, short tick on each of the final 5,4,3,2,1, long low horn at each flag drop
+(row CLEAR). 'Sound On/Off' button in the RO header, remembered in localStorage, default ON;
+audio arms on any click (browser autoplay policy), so the START click enables it before the
+first cue. Human test: build 3 rows x 1 min, START, listen for the full pattern (~3 min).
+NOTE 2026-10-16: the Dell's score.db copied to the dev laptop revealed the DELL WAS RUNNING
+AN OLD APP EXTRACT all along (old vague duplicate-UID error = old code; bogus 'P' class row +
+7 class-5 race_class_starts predated the 2026-10-15 cleanup). Dell DB kept (has the sailors
+added on the Dell this morning), 'P' row + class-5 starts deleted per rule; regression suite
+passes against it. The Dell needs the current code ZIP extracted (code files only, NOT its
+DB - or use this laptop's DB as the master going forward).
+VOICE COUNTDOWN added 2026-10-16 (same day, after beep test PASSED): cues are now SPOKEN via
+browser speechSynthesis (Windows voices, en-GB > en-AU/NZ > any en): "one minute"/"three minutes"
+at whole-minute marks, "thirty/twenty/ten seconds", then "five, four, three, two, one"; each
+phrase interrupts the previous so rapid cues stay on the beat; beep pattern kept as automatic
+fallback if speech synthesis is unavailable. Horn at flag drop unchanged. Awaiting human test
+per process rule (same 3 rows x 1 min listen test).
+FUTURE (RO note 2026-10-16): a LOUD horn audible to the SAILORS on the water is separate later
+development - all current audio is laptop-speaker only, for the race officers sitting at the
+laptop.
+
 **New Freatures
 
 
@@ -200,31 +226,7 @@ courses logged as New Feature 5 (this weekend's regatta: 3-4 classes).
   text from cards when the column already identifies the class (sail number only), reduce
   per-card padding, hide the 'x sailors' count. Any further real-estate gain beyond the
   2026-10-16 cosmetic round (flag removed from cards, compact one-line rows) is this feature.
-6 add a sound file to laptop speaker with count d
-own at each minute interval then on the final minute 30 seconds 20 seconds 10 seconds and final each secind 5,4,3,2,1,0
-This is for the race officers, so they cam watch the startline and look for silors flase start and not watch the screen
-== CODED 2026-10-16, awaiting human test per process rule. Client-side only: Web Audio beeps
-synthesized in app.js (no sound files, no backend, no API changes). Cue pattern per active
-sub-timer row: single beep at each whole-minute mark (fires as each row goes active), double
-beep at 30/20/10s, short tick on each of the final 5,4,3,2,1, long low horn at each flag drop
-(row CLEAR). 'Sound On/Off' button in the RO header, remembered in localStorage, default ON;
-audio arms on any click (browser autoplay policy), so the START click enables it before the
-first cue. Human test: build 3 rows x 1 min, START, listen for the full pattern (~3 min).
-NOTE 2026-10-16: the Dell's score.db copied to the dev laptop revealed the DELL WAS RUNNING
-AN OLD APP EXTRACT all along (old vague duplicate-UID error = old code; bogus 'P' class row +
-7 class-5 race_class_starts predated the 2026-10-15 cleanup). Dell DB kept (has the sailors
-added on the Dell this morning), 'P' row + class-5 starts deleted per rule; regression suite
-passes against it. The Dell needs the current code ZIP extracted (code files only, NOT its
-DB - or use this laptop's DB as the master going forward).
-VOICE COUNTDOWN added 2026-10-16 (same day, after beep test PASSED): cues are now SPOKEN via
-browser speechSynthesis (Windows voices, en-GB > en-AU/NZ > any en): "one minute"/"three minutes"
-at whole-minute marks, "thirty/twenty/ten seconds", then "five, four, three, two, one"; each
-phrase interrupts the previous so rapid cues stay on the beat; beep pattern kept as automatic
-fallback if speech synthesis is unavailable. Horn at flag drop unchanged. Awaiting human test
-per process rule (same 3 rows x 1 min listen test).
-FUTURE (RO note 2026-10-16): a LOUD horn audible to the SAILORS on the water is separate later
-development - all current audio is laptop-speaker only, for the race officers sitting at the
-laptop.
+
 
 
 
