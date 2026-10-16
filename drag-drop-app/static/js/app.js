@@ -49,6 +49,66 @@ function getGridIndexFromColorClass(colorClass) {
     return index >= 0 ? index + 1 : 1;
 }
 
+// ===== Countdown audio (Feature 6) - RO watches the startline, not the screen =====
+let audioCtx = null;
+let soundEnabled = localStorage.getItem('fm_sound_enabled') !== 'off';
+const audioCues = {};  // row id -> { second: true } cues already played this run
+
+// Browsers refuse audio until a user gesture - arm on any click/keypress so
+// the START button click enables sound before the first cue fires.
+function ensureAudioContext() {
+    if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+    }
+}
+document.addEventListener('pointerdown', ensureAudioContext);
+document.addEventListener('keydown', ensureAudioContext);
+
+function beep(freq, duration, delay = 0, gain = 0.35) {
+    if (!soundEnabled || !audioCtx) return;
+    const t = audioCtx.currentTime + delay;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc.connect(g);
+    g.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + duration);
+}
+
+// Whole-minute mark: single mid beep. 30/20/10s: double beep.
+// Final 5,4,3,2,1: short tick. 0 / flag down: long low horn.
+function cueMinute()  { beep(880, 0.15); }
+function cueWarning() { beep(660, 0.12); beep(660, 0.12, 0.18); }
+function cueTick()    { beep(1320, 0.07); }
+function cueHorn()    { beep(220, 1.2, 0, 0.5); beep(220, 1.2, 0.02, 0.4); }
+
+function resetAudioCues() {
+    Object.keys(audioCues).forEach(k => delete audioCues[k]);
+}
+
+function playCountdownCues(item, rem) {
+    if (!soundEnabled) return;
+    const cueSec = Math.ceil(rem);
+    const fired = audioCues[item.id] || (audioCues[item.id] = {});
+    if (fired[cueSec]) return;
+    fired[cueSec] = true;
+    if (cueSec > 0 && cueSec % 60 === 0) {
+        cueMinute();
+    } else if (cueSec === 30 || cueSec === 20 || cueSec === 10) {
+        cueWarning();
+    } else if (cueSec >= 1 && cueSec <= 5) {
+        cueTick();
+    }
+}
+
 function createGrid(gridIndex) {
     const container = document.getElementById('event-grids-container');
     const colorClass = getNextGridColorClass(gridIndex - 1);
@@ -242,6 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-start').addEventListener('click', () => {
         if (state.isRunning || state.sequence.length === 0) return;
+        resetAudioCues();
         state.isRunning = true;
         state.raceStartTime = Date.now();
         state.sequence[0].status = 'ACTIVE';
@@ -269,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btn-reset').addEventListener('click', () => {
+        resetAudioCues();
         state.isRunning = false;
         state.raceStartTime = null;
         state.sequence.forEach(s => { s.status = 'PENDING'; s.current_remaining_seconds = s.countdown_minutes * 60; });
@@ -294,6 +356,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('master-start-input').addEventListener('change', e => { state.masterStartTime = e.target.value; });
+
+    // Sound on/off toggle (Feature 6) - remembered between sessions
+    const soundBtn = document.getElementById('btn-sound');
+    function updateSoundBtn() {
+        if (soundBtn) soundBtn.textContent = soundEnabled ? '🔊 Sound On' : '🔇 Sound Off';
+    }
+    if (soundBtn) {
+        updateSoundBtn();
+        soundBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            localStorage.setItem('fm_sound_enabled', soundEnabled ? 'on' : 'off');
+            ensureAudioContext();
+            updateSoundBtn();
+            if (soundEnabled) cueMinute();  // audible confirmation
+        });
+    }
 
     // Display mode toggle buttons
     document.getElementById('btn-mode-flags').addEventListener('click', () => setDisplayMode('flags'));
@@ -460,10 +538,12 @@ function updateCountdown() {
         it.status = e < start ? 'PENDING' : e < end ? 'ACTIVE' : 'CLEAR';
         it.current_remaining_seconds = it.status === 'PENDING' ? dur : it.status === 'ACTIVE' ? rem : 0;
         if (it.status === 'ACTIVE' || it.status === 'PENDING') hasAnyActive = true;
+        if (it.status === 'ACTIVE') playCountdownCues(it, rem);
         if (os !== 'ACTIVE' && it.status === 'ACTIVE') {
             fetch('/update-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active_id: it.id, grid_index: it.grid_index }) }).catch(console.error);
         }
         if (os !== 'CLEAR' && it.status === 'CLEAR') {
+            cueHorn();  // flag down - the RO hears the sub-timer finish
             // A sub-timer completed. The class START is the end of the start
             // event's FULL flag sequence (class flag, +P, D flag...), so only
             // notify the Finish Sheet when the LAST row of this grid completes.

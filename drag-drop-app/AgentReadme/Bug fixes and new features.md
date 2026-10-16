@@ -5,31 +5,26 @@ test. Passing regression scripts alone is not enough.
 
 **Bugs
 
-=================
 
-Hot fix list
 
-1) Note the RO and scorers tend to be retired sailors so the screns need to be simple as possible with least noise. The drag and drop flags, time settigns need to be large. Set defalut times to 1 in start events. on Race officer control panele: tighten up and create more space and bette readability for a greater numebr of start sequences. The ordder after the lap count must be asc. ![alt text](image.png)Include adding option for a 3rd flag, Flag oxes larger on the sailor . Make the lap counters and finishing more compacts, we may have 10-20 boats on the list, suggested 
-20 incorrect previous bug, on the finish sheet, the order of sailors must start with Lap Count asc, so once a sailor complets the lap they move to the bottom of the list, the person doing scoring is
-== CODED 2026-10-16, awaiting human test per process rule (Ctrl+F5 first - JS is cached). Applied:
-row default time 1 min (app.py flag library default), RO panel tightened (cell padding reduced,
-flag/text sizes kept, grids stay FULL-WIDTH VERTICAL stacking per RO feedback 2026-10-16 -
-side-by-side columns lost space with 3-4 start sequences),
-add-start button fixed bottom-right with the same rounded style as the other buttons, active
-countdown border halved, active row timer no longer blows up to 25vw font), 3rd flag slot per row
-(class-start + finish-sheet columns recognise all three slots), finish sheet compact one-line
-sailor rows (class flag on the card, sail number prominent and right-aligned next to the lap
-counter, smaller finish box, ~44px rows), lap-count ASC ordering (completing a lap moves the
-sailor down; finished sailors stay at the bottom by finish time). Registry sidebar: sailors
-checked to race drop to the bottom of the registry list so sailors still to sign on stay at
-the top; the chosen sort order applies within each group (CODED 2026-10-16, awaiting human
-test). Regression scripts all pass;
-frontend changes need the human browser test.
-AMENDED 2026-10-16 (2nd RO feedback): class flag image REMOVED from finish-sheet sailor cards
-(screen real estate - the column header already shows the class); finish tick box enlarged to
-36px, the largest that fits the 56px row. Further screen real estate management for 5-class
-courses logged as New Feature 5 (this weekend's regatta: 3-4 classes).
 
+=============================
+in progress
+
+Feature 
+
+======================
+bug backlog
+
+
+4 the 2 end race buttons are not synched, 1 button on each page must stop all timers and chnage race status from running to ended
+5 reset finish sheet does not reset anything - it should clear lap counts etc.
+
+the finish activates after the first sub timer =PASSED ✅, the finish sheet must be on the last subtimer in the start event == fixed with bug 21b: class-start now fires only when the LAST row of the start event completes; awaiting human test per process rule
+18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
+19 the open class can not record results and laps == same root cause as bug 12 (finishsheet.js poller re-disabled open-category cards every poll); fix applied with bug 12, awaiting confirmed human test
+
+ workign with the sailors at the top of the list as the approach lap completion. 
 ==================
 resolved
 
@@ -64,26 +59,23 @@ the backend-reported open_started. Regression: scripts/test_open_flag.py (all te
 15a flag asset fix - Passed ✅ P Class flag updated pclass.jpg -> pclass.png (new 686x785 image; boat_classes now points at pclass.png; old pclass.jpg removed from static/flags so it no longer appears as a draggable card in the RO flag picker). P (blue peter, p.png) and P Class (pclass.png) are TWO DIFFERENT flags/classes - do not merge them. tempref/recording.jsonl references updated to pclass.png so the replay tool keeps working.
 13 the stray 'nul' file that broke git commits == resolved 2026-10-16 (git-level, not a browser bug): file deleted (it is a reserved Windows device name - Explorer and plain 'del nul' silently fail; Git Bash 'rm' removed it) and 'drag-drop-app/nul' is already in .gitignore, so commits cannot break again even if it reappears. Likely cause: a '> nul' redirect run in a Git Bash session (MSYS creates a real file named nul; cmd treats nul as a device, so the .bat launchers are safe).
 16 requirements: 2 classes in the same start sequence == resolved 2026-10-16: Requirements.md updated (secondary/tertiary flag slots + shared starts). The code already supported it - one class-start POST per start event carries ALL the grid's flags, and every recognised class gets its own finish-sheet column.
-
-
-=============================
-in progress
-
-6 move the add start button on the RO page to the lower right == CODED 2026-10-16 (fixed
+6 move the add start button- = Passed ✅ on the RO page to the lower right == CODED 2026-10-16 (fixed
 bottom-right, '+ Add Start', same rounded rectangle as the other buttons; index.html + style.css),
 awaiting human test per process rule
 7 gold/yellow active countdown border halved (4px -> 2px on RO rows; finish-sheet class-started
-cards too) == CODED 2026-10-16, awaiting human test per process rule
-8 start event boxes narrower / more start sequences visible == CODED 2026-10-16; human test
+cards too) == - Passed ✅ CODED 2026-10-16, awaiting human test per process rule
+
+
+8 start event boxes narrower / more start sequences visible ==  == - Passed ✅ CODED 2026-10-16; human test
 feedback same day: side-by-side columns REVERTED to full-width vertical stacking (RO: loses
 space with 3-4 start sequences), compact paddings kept. Awaiting re-test per process rule
-9 finish sailors compact == CODED 2026-10-16; AMENDED after human test same day: lap counter on
+9 finish sailors compact == == - Passed ✅ CODED 2026-10-16; AMENDED after human test same day: lap counter on
 the LEFT, finish tick box on the FAR RIGHT (prevents accidental finish clicks), all fields on
 one line (class flag, class, name, sail number), fonts/card +25%, lap button + finish box +40%.
 AMENDED AGAIN same day: class flag removed from the cards, finish tick box 36px (max for the row).
-Awaiting re-test per process rule
 
-23 cannot add a new sailor on the Dell - keeps saying SL-2045 not available (found 2026-10-16,
+
+23 cannot add a new sailor on the Dell == passed ✅- keeps saying SL-2045 not available (found 2026-10-16,
 regatta prep) == FIXED same day, awaiting human test per process rule. How UIDs work: uid is the
 sailors PRIMARY KEY, Sailwave convention SL-<sail no> (e.g. SL-2045), and sail_no is also UNIQUE.
 Root cause: the first add of sail 2045 had ALREADY SUCCEEDED, but the registry's saved search
@@ -95,9 +87,12 @@ sailor and UID ("sign them on from the list - clear the search box"); (c) a succ
 the saved search/class filters so the new sailor is immediately visible. Immediate workaround for
 the operator: clear the registry search box, type 2045, the sailor is already there - just tick
 Racing Today. Regression: tempref/test_add_sailor.py (7 checks pass).
+15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
+allowed time per race is approaching
 
-14 must allow a late sailor to be added to the race after it has started == regression + replay PASS (sailors signed on AFTER their class start stay visible in their own class column, live until first lap/finish, then join the locked roster race_sailors without duplicating. Regression: scripts/test_late_signon.py; replay of the 23:40 recorded session passes all 15 steps). Awaiting confirmed human test per process rule
-21 The timers are not recording start time = expert results show:
+
+14 must allow a late sailor to be added  =PASSED ✅ to the race after it has started == regression + replay PASS (sailors signed on AFTER their class start stay visible in their own class column, live until first lap/finish, then join the locked roster race_sailors without duplicating. Regression: scripts/test_late_signon.py; replay of the 23:40 recorded session passes all 15 steps). Awaiting confirmed human test per process rule
+21 = Passed =PASSED ✅ The timers are not recording start time = expert results show:
 Sequence	Class	Sailor	Sail No	Start Time	Laps	Lap Times	Finish Time	Race End Time
 	Ilca 6	Anton	187893		1	2026-10-15T23:05:59.664573	2026-10-15T23:06:15.351890	2026-10-15T23:06:19.936983
 	Ilca 6	Bridget	212958		1	2026-10-15T23:05:56.424181	2026-10-15T23:06:10.087931	2026-10-15T23:06:19.936983
@@ -128,7 +123,7 @@ so a refresh cannot recreate it.
 Regression: scripts/test_start_event.py now asserts p.png and Dflag are both skipped.
 Regression: scripts/test_start_event.py (single race from concurrent starts, signal flags
 skipped, CSV start times present).
-HUMAN TEST 2026-10-15 23:44: Start 1 (Ilca 6, full 3-flag sequence) PASSED - start time
+HUMAN TEST  2026-10-15 23:44: Start 1 (Ilca 6, full 3-flag sequence) PASSED - start time
 23:44:38 recorded for both Ilca 6 sailors, sequence 1 in CSV. ONE FAIL REMAINING: Open Category
 sailors (Emma, Victoria sailing open) had blank Start Time + Sequence in the CSV.
 c) FIX (2026-10-15): the open start was only stored in memory (app_state) and never persisted -
@@ -141,7 +136,7 @@ Regression: scripts/test_open_flag.py 4b (open start row + start time + sequence
 Awaiting human re-test of the CSV export.
 
 22 the sailor registry reset race did not clear the highlighted finish boxes and not ready for the next race of the day
-== FIXED 2026-10-15, awaiting human test per process rule. Root cause: the registry sidebar Reset
+== Passed  FIXED 2026-10-15, awaiting human test per process rule. Root cause: the registry sidebar Reset
 button called /api/reset-finish-sheet, which wiped finish times in the DB and cleared the Flag
 Machine sequence but left race_id set - so the UI skipped its re-render (gated on race not active)
 and the green finished cards stayed on screen. New rule: reset-finish-sheet REFUSES while the
@@ -151,22 +146,36 @@ the day, while keeping all recorded laps/finishes/race history in the DB and NEV
 Flag Machine sequence. Frontend: the registry Reset button now always re-renders the sheet and
 shows the server message on failure; the Start button re-enables once the sheet is READY.
 Regression: scripts/test_start_event.py sections 4-6.
-======================
-active
 
 
-4 the 2 end race buttons are not synched, 1 button on each page must stop all timers and chnage race status from running to ended
-5 reset finish sheet does not reset anything - it should clear lap counts etc.
+=================
 
-15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
-allowed time per race is approaching
-17 the finish activates after the first sub timer, the finish sheet must be on the last subtimer in the start event == fixed with bug 21b: class-start now fires only when the LAST row of the start event completes; awaiting human test per process rule
-18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
-19 the open class can not record results and laps == same root cause as bug 12 (finishsheet.js poller re-disabled open-category cards every poll); fix applied with bug 12, awaiting confirmed human test
+Hot fix list = complete an dtested & working
 
- workign with the sailors at the top of the list as the approach lap completion. 
+1) Note the RO and scorers tend to be retired sailors so the screns need to be simple as possible with least noise. The drag and drop flags, time settigns need to be large. Set defalut times to 1 in start events. on Race officer control panele: tighten up and create more space and bette readability for a greater numebr of start sequences. The ordder after the lap count must be asc. ![alt text](image.png)Include adding option for a 3rd flag, Flag oxes larger on the sailor . Make the lap counters and finishing more compacts, we may have 10-20 boats on the list, suggested 
+20 incorrect previous bug, on the finish sheet, the order of sailors must start with Lap Count asc, so once a sailor complets the lap they move to the bottom of the list, the person doing scoring is
+== CODED 2026-10-16, awaiting human test per process rule (Ctrl+F5 first - JS is cached). Applied:
+row default time 1 min (app.py flag library default), RO panel tightened (cell padding reduced,
+flag/text sizes kept, grids stay FULL-WIDTH VERTICAL stacking per RO feedback 2026-10-16 -
+side-by-side columns lost space with 3-4 start sequences),
+add-start button fixed bottom-right with the same rounded style as the other buttons, active
+countdown border halved, active row timer no longer blows up to 25vw font), 3rd flag slot per row
+(class-start + finish-sheet columns recognise all three slots), finish sheet compact one-line
+sailor rows (class flag on the card, sail number prominent and right-aligned next to the lap
+counter, smaller finish box, ~44px rows), lap-count ASC ordering (completing a lap moves the
+sailor down; finished sailors stay at the bottom by finish time). Registry sidebar: sailors
+checked to race drop to the bottom of the registry list so sailors still to sign on stay at
+the top; the chosen sort order applies within each group (CODED 2026-10-16, awaiting human
+test). Regression scripts all pass;
+frontend changes need the human browser test.
+AMENDED 2026-10-16 (2nd RO feedback): class flag image REMOVED from finish-sheet sailor cards
+(screen real estate - the column header already shows the class); finish tick box enlarged to
+36px, the largest that fits the 56px row. Further screen real estate management for 5-class
+courses logged as New Feature 5 (this weekend's regatta: 3-4 classes).
 
 **New Freatures
+
+
 1 save start sequence for easy set-up
 2 disqualify the sailor 
 3 dnf 
@@ -191,7 +200,22 @@ allowed time per race is approaching
   text from cards when the column already identifies the class (sail number only), reduce
   per-card padding, hide the 'x sailors' count. Any further real-estate gain beyond the
   2026-10-16 cosmetic round (flag removed from cards, compact one-line rows) is this feature.
-
+6 add a sound file to laptop speaker with count d
+own at each minute interval then on the final minute 30 seconds 20 seconds 10 seconds and final each secind 5,4,3,2,1,0
+This is for the race officers, so they cam watch the startline and look for silors flase start and not watch the screen
+== CODED 2026-10-16, awaiting human test per process rule. Client-side only: Web Audio beeps
+synthesized in app.js (no sound files, no backend, no API changes). Cue pattern per active
+sub-timer row: single beep at each whole-minute mark (fires as each row goes active), double
+beep at 30/20/10s, short tick on each of the final 5,4,3,2,1, long low horn at each flag drop
+(row CLEAR). 'Sound On/Off' button in the RO header, remembered in localStorage, default ON;
+audio arms on any click (browser autoplay policy), so the START click enables it before the
+first cue. Human test: build 3 rows x 1 min, START, listen for the full pattern (~3 min).
+NOTE 2026-10-16: the Dell's score.db copied to the dev laptop revealed the DELL WAS RUNNING
+AN OLD APP EXTRACT all along (old vague duplicate-UID error = old code; bogus 'P' class row +
+7 class-5 race_class_starts predated the 2026-10-15 cleanup). Dell DB kept (has the sailors
+added on the Dell this morning), 'P' row + class-5 starts deleted per rule; regression suite
+passes against it. The Dell needs the current code ZIP extracted (code files only, NOT its
+DB - or use this laptop's DB as the master going forward).
 
 
 
