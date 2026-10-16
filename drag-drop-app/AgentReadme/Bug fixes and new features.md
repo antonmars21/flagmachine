@@ -216,6 +216,15 @@ AN OLD APP EXTRACT all along (old vague duplicate-UID error = old code; bogus 'P
 added on the Dell this morning), 'P' row + class-5 starts deleted per rule; regression suite
 passes against it. The Dell needs the current code ZIP extracted (code files only, NOT its
 DB - or use this laptop's DB as the master going forward).
+VOICE COUNTDOWN added 2026-10-16 (same day, after beep test PASSED): cues are now SPOKEN via
+browser speechSynthesis (Windows voices, en-GB > en-AU/NZ > any en): "one minute"/"three minutes"
+at whole-minute marks, "thirty/twenty/ten seconds", then "five, four, three, two, one"; each
+phrase interrupts the previous so rapid cues stay on the beat; beep pattern kept as automatic
+fallback if speech synthesis is unavailable. Horn at flag drop unchanged. Awaiting human test
+per process rule (same 3 rows x 1 min listen test).
+FUTURE (RO note 2026-10-16): a LOUD horn audible to the SAILORS on the water is separate later
+development - all current audio is laptop-speaker only, for the race officers sitting at the
+laptop.
 
 
 
