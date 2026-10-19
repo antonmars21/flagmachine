@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 import os
 import sys
 import argparse
+import re
 from datetime import datetime
 
 # Configuration
@@ -196,6 +197,76 @@ def parse_sailwave_xml(xml_path):
         fields = {child.tag: (child.text or '').strip() for child in comp}
         fields['handle'] = comp.get('handle')
         boats.append(fields)
+
+    print(f"  Found {len(boats)} competitors")
+    return boats, []
+
+
+def parse_sailwave_htm(htm_path):
+    """
+    Parse a Sailwave boat_master.htm export (the HTML competitor list
+    Sailwave writes alongside its .blw database - the club's source file
+    for the 'Import Sailwave sailors' button).
+
+    Expected table columns: [x] Fleet, Class, Boat, SailNo, HelmName,
+    Handicap. Returns (boats, classes) in the same shape as
+    parse_sailwave_xml, so extract_boat_info / import_sailors work
+    unchanged: compclass holds the division (e.g. 'ILCA 6'), compboat is
+    the boat name, compsailno the sail number, comphelmname the helm and
+    comprating the handicap.
+    """
+    import html as html_mod
+    print(f"\n{'='*60}")
+    print(f"PARSING: {htm_path}")
+    print(f"{'='*60}")
+
+    if not os.path.exists(htm_path):
+        print(f"ERROR: File not found: {htm_path}")
+        return None, None
+
+    try:
+        with open(htm_path, 'r', encoding='ISO-8859-1') as f:
+            content = f.read()
+    except OSError as e:
+        print(f"ERROR: Cannot read file: {e}")
+        return None, None
+
+    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', content, re.S)
+    header_idx = {}
+    for row in rows:
+        heads = [html_mod.unescape(re.sub(r'<[^>]+>', '', h)).strip()
+                 for h in re.findall(r'<th[^>]*>(.*?)</th>', row, re.S)]
+        norm = [h.lower().replace(' ', '') for h in heads]
+        if 'sailno' in norm and 'helmname' in norm:
+            header_idx = {name: i for i, name in enumerate(norm)}
+            break
+    if not header_idx:
+        print("ERROR: No competitor table header (SailNo/HelmName) found")
+        return None, None
+
+    def cell(row, column, alt):
+        idx = header_idx.get(column)
+        if idx is None:
+            return ''
+        cells = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, re.S)
+        if idx >= len(cells):
+            return ''
+        text = html_mod.unescape(re.sub(r'<[^>]+>', '', cells[idx])).strip()
+        return text if text.lower() not in ('x', column, alt) else ''
+
+    boats = []
+    for row in rows:
+        sail_no = cell(row, 'sailno', 'sailno')
+        if not sail_no:
+            continue  # header row or non-competitor row
+        boats.append({
+            'compfleet': cell(row, 'fleet', 'fleet'),
+            'compclass': cell(row, 'class', 'class'),
+            'compboat': cell(row, 'boat', 'boat'),
+            'compsailno': sail_no,
+            'comphelmname': cell(row, 'helmname', 'helmname'),
+            'comprating': cell(row, 'handicap', 'handicap'),
+        })
 
     print(f"  Found {len(boats)} competitors")
     return boats, []
@@ -498,7 +569,7 @@ def import_sailwave_data(xml_path=None, db_path=None, cleanup_orphans=False):
     print(f"\n{'#'*60}")
     print(f"# SAILWAVE DATA IMPORT")
     print(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"# XML: {xml_path}")
+    print(f"# Source: {xml_path}")
     print(f"# DB:   {db_path}")
     print(f"{'#'*60}\n")
     
@@ -527,11 +598,15 @@ def import_sailwave_data(xml_path=None, db_path=None, cleanup_orphans=False):
         c.execute('SELECT class_name, class_id FROM boat_classes')
         existing_classes = {row['class_name']: row['class_id'] for row in c.fetchall()}
         
-        # Parse the Sailwave XML export
-        boats, classes = parse_sailwave_xml(xml_path)
+        # Parse the Sailwave export - boat_master.htm or Boats_Master.xml
+        # depending on the file extension
+        if str(xml_path).lower().endswith(('.htm', '.html')):
+            boats, classes = parse_sailwave_htm(xml_path)
+        else:
+            boats, classes = parse_sailwave_xml(xml_path)
         
         if boats is None:
-            print("ERROR: Failed to parse XML file")
+            print("ERROR: Failed to parse the Sailwave export file")
             return False
         
         # Import classes
@@ -573,7 +648,7 @@ def main():
     parser.add_argument(
         '--xml-path',
         default=None,
-        help=f'Path to Boats_Master.xml (default: {DEFAULT_XML_PATH})'
+        help='Path to the Sailwave export (boat_master.htm or Boats_Master.xml)'
     )
     parser.add_argument(
         '--db-path',

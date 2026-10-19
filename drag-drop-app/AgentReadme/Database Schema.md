@@ -18,6 +18,8 @@ Last verified 2026-10-16 (regatta prep, commit `04553d8`).
 | `race_sailors` | The locked roster for a race: who was signed on at their class start, their lap count, finish time, manual placement |
 | `race_class_starts` | Start time + sequence number for each class in a race (class flag went down) |
 | `race_open_starts` | Same for the Open Category when the RO used the openclass flag (race_id UNIQUE) |
+| `class_station_assignments` | Multi-station finish sheet: which station (1/2) a class column ('c<class_id>', or 'open') is assigned to. Kept for the whole day, across races |
+| `capture_actions` | Step Back log: every lap/finish with the station that captured it; undone actions kept for Restore with original timestamps |
 | `lap_records` | One row per recorded lap: sailor, race, lap number, timestamp (feeds CSV lap times) |
 | `sqlite_sequence` | SQLite internal (AUTOINCREMENT counters) — never edit |
 
@@ -101,6 +103,43 @@ UNIQUE(race_id, class_id)
 The start fires only when the LAST row of a start event's full flag sequence
 completes (bug 21b). One POST carries ALL the grid's flags (primary, secondary
 and tertiary slots).
+
+## class_station_assignments — station split (feature 4)
+
+```sql
+class_key  TEXT PRIMARY KEY   -- 'c<class_id>' for a class column, 'open' for Open Category
+station    INTEGER NOT NULL   -- 1 or 2
+updated_at TEXT
+```
+
+Written by POST /api/assign-class-station (the finish-sheet column header toggle).
+Server-truth and kept for the whole day: survives races, end-race and
+reset-finish-sheet. Columns with no stored row default by sheet position -
+the first 3 columns to station 1, the remainder to station 2 (Open Category
+is a normal trailing column). /api/race-status reports sheet_version, bumped
+on every column toggle, step back or restore, so all stations re-render within ~0.5s.
+
+## capture_actions — Step Back log (feature 4)
+
+```sql
+id         INTEGER PK AUTOINCREMENT
+race_id    INTEGER NOT NULL FK -> races
+uid        TEXT NOT NULL FK -> sailors
+action     TEXT NOT NULL          -- 'lap' | 'finish'
+station    INTEGER               -- 1 | 2 (NULL for legacy no-station captures)
+timestamp  TEXT NOT NULL         -- ORIGINAL capture time (used by Restore)
+lap_number INTEGER               -- for lap actions
+ref_id     INTEGER               -- lap_records.id for laps
+undone     INTEGER DEFAULT 0     -- 1 after Step Back, cleared by Restore
+undone_at  TEXT
+```
+
+Written by /api/record-lap and /api/mark-finish (with the station ID).
+POST /api/undo-last {station} reverses that station's most recent non-undone
+action (lap: remove the logged lap record + decrement; finish: clear the
+time). POST /api/restore-last {station} re-applies the most recently undone
+action with its ORIGINAL timestamp. Nothing is hard-deleted. A 2s server
+guard rejects a second lap for the same sailor within 2 seconds.
 
 ## race_open_starts — Open Category start
 

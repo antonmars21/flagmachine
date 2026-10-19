@@ -165,7 +165,7 @@
             // UPDATE FLAG 1
             if (currentMode === 'flags' || currentMode === 'both') {
                 if (data.flag_image && data.flag_image !== "") {
-                    const flagUrl = `/static/flags/${data.flag_image}`;
+                    const flagUrl = data.flag_url || `/static/flags/${data.flag_image}`;
                     console.log('Loading flag 1:', flagUrl);
                     flag1El.innerHTML = `<img src="${flagUrl}" alt="Flag 1">`;
                     flag1El.classList.remove('hidden');
@@ -179,7 +179,7 @@
 
             // UPDATE FLAG 2 (if secondary flag exists)
             if ((currentMode === 'flags' || currentMode === 'both') && data.secondary_flag_image && data.secondary_flag_image !== "") {
-                const flag2Url = `/static/flags/${data.secondary_flag_image}`;
+                const flag2Url = data.secondary_flag_url || `/static/flags/${data.secondary_flag_image}`;
                 console.log('Loading flag 2:', flag2Url);
                 flag2El.innerHTML = `<img src="${flag2Url}" alt="Flag 2">`;
                 flag2El.classList.remove('hidden');

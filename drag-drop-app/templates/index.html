@@ -12,7 +12,6 @@
         <div class="branding">
             <h1>⚓ FLAG MACHINE</h1>
             <span class="version-tag">v1.0 Demo Dashboard</span>
-            <a href="/finishsheet" style="margin-left: 30px; padding: 8px 16px; background-color: #10b981; color: white; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px;">📊 Finish Sheet</a>
         </div>
         
         <div class="control-actions">
@@ -24,7 +23,7 @@
             <button id="btn-start" class="btn btn-green">⚡ Start</button>
             <button id="btn-stop" class="btn btn-red">🛑 Stop</button>
             <button id="btn-reset" class="btn btn-gray">🔄 Reset</button>
-            <button id="btn-end-race" class="btn btn-blue" style="background-color: #007acc; color: white;">🏁 End Race</button>
+            <button id="btn-end-race" class="btn btn-endrace">🏁 End Race</button>
             <button id="btn-sound" class="btn btn-gray" title="Countdown audio on/off">🔊 Sound On</button>
         </div>
 
@@ -39,7 +38,7 @@
         </div>
         
         <div id="global-status-badge" class="badge status-ready" style="margin-left: auto; align-self: center;">STATE: READY</div>
-        <button id="btn-refresh-sailwave" class="btn btn-purple" style="background-color: #8b5cf6; color: white; margin-left: 10px;">\ud83d\udd04 Refresh Sailwave</button>
+        <button id="btn-refresh-sailwave" class="btn btn-sailwave">📥 Import Sailwave sailors</button>
     </header>
 
     <!-- Display Mode Selector (Below Header) -->
@@ -48,6 +47,10 @@
         <button id="btn-mode-flags" class="btn btn-mode active">🚩 Flags</button>
         <button id="btn-mode-both" class="btn btn-mode">🎬 Both</button>
         <button id="btn-mode-number" class="btn btn-mode">#️⃣ Timer</button>
+        <span style="flex: 1;"></span>
+        <a class="btn btn-displayboard" href="/display" target="_blank" title="Open the outdoor display board">🖥 Display Board</a>
+        <a class="btn btn-finishsheet" href="/finishsheet?station=1" target="_blank">📊 Finish Sheet 1</a>
+        <a class="btn btn-finishsheet" href="/finishsheet?station=2" target="_blank">📊 Finish Sheet 2</a>
     </div>
 
     <main class="workspace-container">
@@ -55,31 +58,52 @@
         <aside class="sidebar-library">
             <h2>📋 Flags</h2>
             <p class="instruction-text">Drag items out into a specific Start grid below:</p>
-            <div class="library-scroller">
-                {% for asset in assets %}
-                <div class="library-card" draggable="true" 
-                     data-label="{{ asset.label }}" 
-                     data-flag="{{ asset.flag_image }}" 
+                        <div class="library-scroller">
+                {% if class_assets %}
+                <div class="library-group-label" style="font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #10b981; padding: 2px 4px;">CLASS FLAGS</div>
+                {% for asset in class_assets %}
+                <div class="library-card" draggable="true"
+                     data-label="{{ asset.label }}"
+                     data-flag="{{ asset.flag_image }}"
                      data-minutes="{{ asset.default_minutes }}">
-                    
                     <div class="library-drag-handle"></div>
-                    
                     <div class="library-flag-frame">
-                        <img src="{{ url_for('static', filename='flags/' + asset.flag_image) }}" 
-                             alt="{{ asset.label }}" 
+                        <img src="{{ asset.flag_url }}"
+                             alt="{{ asset.label }}"
                              style="width: 100%; height: 100%; object-fit: contain; border-radius: 2px;">
                     </div>
-                    
                     <div class="library-meta">
                         <div class="asset-name">{{ asset.label }}</div>
                         <div class="asset-default-time">{{ asset.default_minutes }} </div>
                     </div>
                 </div>
-                {% else %}
-                <div class="no-assets-alert" style="padding: 15px; color: #888; text-align: center; font-style: italic;">
-                    No flags discovered in static/flags/
+                {% endfor %}
+                {% endif %}
+                {% if signal_assets %}
+                <div class="library-group-label" style="font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #f59e0b; padding: 2px 4px; margin-top: 6px;">SIGNAL FLAGS</div>
+                {% for asset in signal_assets %}
+                <div class="library-card" draggable="true"
+                     data-label="{{ asset.label }}"
+                     data-flag="{{ asset.flag_image }}"
+                     data-minutes="{{ asset.default_minutes }}">
+                    <div class="library-drag-handle"></div>
+                    <div class="library-flag-frame">
+                        <img src="{{ asset.flag_url }}"
+                             alt="{{ asset.label }}"
+                             style="width: 100%; height: 100%; object-fit: contain; border-radius: 2px;">
+                    </div>
+                    <div class="library-meta">
+                        <div class="asset-name">{{ asset.label }}</div>
+                        <div class="asset-default-time">{{ asset.default_minutes }} </div>
+                    </div>
                 </div>
                 {% endfor %}
+                {% endif %}
+                {% if not class_assets and not signal_assets %}
+                <div class="no-assets-alert" style="padding: 15px; color: #888; text-align: center; font-style: italic;">
+                    No flags discovered in static/flags/classflags or static/flags/signalflags
+                </div>
+                {% endif %}
             </div>
         </aside>
 
@@ -119,6 +143,9 @@
         <button id="btn-add-grid" class="btn btn-add-grid" title="Add Start Sequence">+ Add Start</button>
     </main>
 
+    <script>
+        window.FLAG_URL_MAP = {{ flag_url_map | tojson }};
+    </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

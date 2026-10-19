@@ -6,18 +6,43 @@ const state = {
     race_active: false,
     columns: [],
     start_time: null,
-    drag_source: null
+    drag_source: null,
+    station: null,
+    assignments: {},
+    sheet_version: null
 };
 
 /**
- * Refresh Sailwave data from boat_master.json
+ * Station identity (feature 4): /finishsheet?station=1|2 - the URL is
+ * authoritative and remembered per tab (sessionStorage) so two tabs on
+ * the same machine keep different stations. Without the parameter the
+ * screen defaults to station 1.
+ */
+function getStationFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = parseInt(params.get('station'), 10);
+    if (fromUrl === 1 || fromUrl === 2) {
+        sessionStorage.setItem('fs_station', String(fromUrl));
+        return fromUrl;
+    }
+    const saved = parseInt(sessionStorage.getItem('fs_station'), 10);
+    return (saved === 1 || saved === 2) ? saved : 1;
+}
+
+function updateStationBadge() {
+    const badge = document.getElementById('station-badge');
+    if (badge && state.station) badge.textContent = 'Station ' + state.station;
+}
+
+/**
+ * Import sailors from the Sailwave boat_master.htm export
  */
 async function refreshSailwaveData() {
     const btn = document.getElementById('btn-refresh-sailwave');
     if (!btn) return;
     
     const originalText = btn.innerHTML;
-    btn.innerHTML = '\ud83d\udd04 Refreshing...';
+    btn.innerHTML = '📥 Importing...';
     btn.disabled = true;
     
     try {
@@ -29,17 +54,19 @@ async function refreshSailwaveData() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            alert(`Sailwave refresh successful!\n\n` +
+            alert(`Sailwave sailors imported successfully!
+
+` +
                   `Classes: ${data.imported.classes_new || 0} new, ${data.imported.classes_updated || 0} updated\n` +
                   `Sailors: ${data.imported.sailors_new || 0} new, ${data.imported.sailors_updated || 0} updated\n` +
                   `Total: ${data.imported.total_sailors || 0} sailors in database`);
             // Refresh the registry list
             await loadRegistryList();
         } else {
-            alert(`Refresh failed: ${data.message || 'Unknown error'}`);
+            alert(`Import failed: ${data.message || 'Unknown error'}`);
         }
     } catch (error) {
-        alert(`Refresh failed: ${error.message}`);
+        alert(`Import failed: ${error.message}`);
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -52,6 +79,10 @@ async function refreshSailwaveData() {
 async function initFinishSheet() {
     console.log("Initializing Finish Sheet...");
     
+    // Station identity (feature 4): this screen's station number
+    state.station = getStationFromUrl();
+    updateStationBadge();
+    
     // Fetch sailors and render columns
     await loadAndRenderSailors();
     
@@ -59,6 +90,7 @@ async function initFinishSheet() {
     document.getElementById('btn-start-race').addEventListener('click', startRace);
     document.getElementById('btn-end-race').addEventListener('click', endRace);
     document.getElementById('btn-export-csv').addEventListener('click', exportRaceCsv);
+    document.getElementById('btn-step-back').addEventListener('click', stepBack);
     
     // Add refresh button handler
     const refreshBtn = document.getElementById('btn-refresh-sailwave');
@@ -86,7 +118,7 @@ async function initFinishSheet() {
  */
 async function loadAndRenderSailors() {
     try {
-        const response = await fetch('/api/sailors-for-onwater');
+        const response = await fetch('/api/sailors-for-onwater?station=' + state.station);
         const data = await response.json();
         
         if (data.status !== 'success') {
@@ -95,10 +127,111 @@ async function loadAndRenderSailors() {
         }
         
         state.columns = data.columns;
+        state.assignments = data.assignments || {};
         renderColumns(data.columns);
     } catch (error) {
         console.error("Error loading sailors:", error);
     }
+}
+
+/**
+ * Move a class column to the other station (column header toggle).
+ * Server-truth: the assignment is stored and kept for the day; every
+ * station re-renders when its poller sees the new assignments_version.
+ */
+async function moveClassToStation(classKey, station) {
+    if (!classKey) return;
+    try {
+        const response = await fetch('/api/assign-class-station', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ class_key: classKey, station })
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            loadAndRenderSailors();
+        } else {
+            alert(data.message || 'Could not move the class.');
+        }
+    } catch (error) {
+        console.error("Error moving class to station:", error);
+    }
+}
+
+/**
+ * Step Back (feature 4): instantly reverse THIS station's most recent
+ * capture (lap or finish, any sailor). No confirm dialog - the toast
+ * that follows offers Restore with the original time as the safety net.
+ */
+async function stepBack() {
+    try {
+        const response = await fetch('/api/undo-last', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ station: state.station })
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            const what = data.action === 'lap'
+                ? `Lap ${data.lap_number} for ${data.sailor}`
+                : `Finish for ${data.sailor}`;
+            showStepBackToast(`Stepped back: ${what} (${fmtClock(data.timestamp)})`, true);
+            loadAndRenderSailors();
+        } else {
+            showStepBackToast(data.message || 'Nothing to step back.', false);
+        }
+    } catch (error) {
+        console.error("Error stepping back:", error);
+    }
+}
+
+/**
+ * Restore this station's most recently undone capture (original time).
+ */
+async function restoreLastStep() {
+    try {
+        const response = await fetch('/api/restore-last', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ station: state.station })
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            const what = data.action === 'lap'
+                ? `Lap ${data.lap_number} for ${data.sailor}`
+                : `Finish for ${data.sailor}`;
+            showStepBackToast(`Restored: ${what} (${fmtClock(data.timestamp)})`, false);
+            loadAndRenderSailors();
+        } else {
+            showStepBackToast(data.message || 'Nothing to restore.', false);
+        }
+    } catch (error) {
+        console.error("Error restoring:", error);
+    }
+}
+
+function fmtClock(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function showStepBackToast(message, withRestore) {
+    let toast = document.getElementById('stepback-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'stepback-toast';
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = `
+        <span>${message}</span>
+        ${withRestore ? '<button id="stepback-restore">Restore</button>' : ''}
+    `;
+    toast.style.display = 'flex';
+    const restoreBtn = document.getElementById('stepback-restore');
+    if (restoreBtn) restoreBtn.addEventListener('click', restoreLastStep);
+    clearTimeout(state._toastTimer);
+    state._toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 10000);
 }
 
 /**
@@ -120,7 +253,10 @@ function renderColumns(columns) {
     wrapper.innerHTML = '';
 
     if (!columns || columns.length === 0) {
-        wrapper.innerHTML = '<div style="padding: 40px; text-align: center; color: #94a3b8; grid-column: 1/-1;">No classes in the Start Sequence yet. Drop flags into the Flag Machine to populate columns.</div>';
+        const emptyMsg = state.station
+            ? `No classes assigned to Station ${state.station}. Move a class here with the toggle on the other screen.`
+            : 'No classes in the Start Sequence yet. Drop flags into the Flag Machine to populate columns.';
+        wrapper.innerHTML = `<div style="padding: 40px; text-align: center; color: #94a3b8; grid-column: 1/-1;">${emptyMsg}</div>`;
         return;
     }
     
@@ -139,10 +275,15 @@ function renderColumns(columns) {
         header.style.borderBottom = `3px solid ${colData.color_hex || '#334155'}`;
         const sequenceNumber = colData.sequence_number || 0;
         const sequenceLabel = sequenceNumber > 0 ? `Start ${sequenceNumber}: ` : '';
+        const targetStation = state.station === 1 ? 2 : 1;
         header.innerHTML = `
             <div class="column-title" style="color: ${colData.color_hex || '#f8fafc'}">${sequenceLabel}${colData.class_name}</div>
-            <div class="column-count">${sailors.length} sailors</div>
+            <div class="column-count">${sailors.length} sailor${sailors.length === 1 ? '' : 's'}</div>
+            <button class="station-toggle" data-class-key="${colData.class_key}" title="Move ${colData.class_name} to Station ${targetStation}">&#10142; ${targetStation}</button>
         `;
+        header.querySelector('.station-toggle').addEventListener('click', () => {
+            moveClassToStation(colData.class_key, targetStation);
+        });
         column_div.appendChild(header);
         
         const list = document.createElement('div');
@@ -200,10 +341,15 @@ function createSailorCard(sailor, col_num, index) {
             <button class="btn-lap" data-action="lap" data-uid="${sailor.uid}" ${can_record ? '' : 'disabled'}>+ Lap</button>
             <div class="lap-value">${sailor.lap_count || 0}</div>
         </div>
-        <span class="sailor-class">${sailor.boat_class}</span>
-        <span class="sailor-name">${sailor.short_name}${finished_class}</span>
-        <div class="sailor-spacer"></div>
-        <span class="sail-number">${sailor.sail_no}</span>
+        <div class="sailor-details">
+            <div class="sailor-name-row">
+                <span class="sailor-name">${sailor.short_name}${finished_class}</span>
+                <span class="sail-number">${sailor.sail_no}</span>
+            </div>
+            <div class="sailor-class-row">
+                <span class="sailor-class">${sailor.boat_class}</span>
+            </div>
+        </div>
         <input type="checkbox" class="finish-checkbox" data-uid="${sailor.uid}" 
             ${sailor.finish_time ? 'checked disabled' : (can_record ? '' : 'disabled')}>
     `;
@@ -285,7 +431,7 @@ async function recordLap(uid, card) {
         const response = await fetch('/api/record-lap', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid })
+            body: JSON.stringify({ uid, station: state.station })
         });
         
         const data = await response.json();
@@ -318,7 +464,7 @@ async function markFinish(uid, is_finished, card) {
         const response = await fetch('/api/mark-finish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid })
+            body: JSON.stringify({ uid, station: state.station })
         });
         
         const data = await response.json();
@@ -355,6 +501,15 @@ async function pollClassStarts() {
         state.race_id = data.race_id;
         state.race_active = !!data.race_id;
         state.race_ended = !!data.race_ended;
+        
+        // Sheet change made on another station (column toggle, step back,
+        // restore): re-render this station's columns.
+        const av = data.sheet_version;
+        if (av !== undefined && av !== state.sheet_version) {
+            const firstSeen = state.sheet_version === null;
+            state.sheet_version = av;
+            if (!firstSeen) loadAndRenderSailors();
+        }
         const startedClassIds = new Set(Object.keys(data.class_start_times || {}));
         
         if (state.race_ended) {

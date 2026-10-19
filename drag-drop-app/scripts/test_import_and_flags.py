@@ -33,7 +33,8 @@ import sqlite3
 conn = sqlite3.connect('tempref/score_test.db')
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
-files = os.listdir('static/flags')
+flag_groups = app_module._scan_flag_folders()
+files = [f for g in flag_groups.values() for f in g]
 ok = True
 print('boat_classes flag_image after scan (run at app import):')
 for r in c.execute('SELECT class_name, flag_image FROM boat_classes ORDER BY class_id'):
@@ -44,6 +45,6 @@ for r in c.execute('SELECT class_name, flag_image FROM boat_classes ORDER BY cla
         ok = False
 conn.close()
 assert ok, 'some flag_image still points at a missing file'
-print('PASS: all flag_image values point at real files in static/flags')
+print('PASS: all flag_image values point at real files in classflags/signalflags')
 
 os.remove('tempref/score_test.db')

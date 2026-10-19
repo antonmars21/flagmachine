@@ -78,20 +78,37 @@ body {
     font-weight: bold;
 }
 
+/* Unified button spec - same metrics as the finish sheet pages */
 .btn {
-    padding: 10px 20px;
-    font-weight: bold;
+    padding: 12px 22px;
+    font-weight: 700;
+    font-size: 15px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
-    transition: transform 0.1s;
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-decoration: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+    transition: transform 0.1s, filter 0.15s, box-shadow 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+    filter: brightness(1.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
 }
 
 .btn:active { transform: scale(0.97); }
 .btn-green { background-color: var(--neon-green); color: #fff; }
 .btn-red { background-color: var(--danger-red); color: #fff; }
 .btn-gray { background-color: #475569; color: #fff; }
+.btn-endrace { background-color: #007acc; color: #fff; }
+.btn-sailwave { background-color: #8b5cf6; color: #fff; }
+.btn-finishsheet { background-color: #10b981; color: #fff; }
+.btn-displayboard { background-color: #0e7490; color: #fff; }
 
 .btn-mode {
     padding: 6px 12px;

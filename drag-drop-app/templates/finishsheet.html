@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finish Sheet - Race Scoring</title>
+    <title>Finish sheet {{ station }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/registry.css') }}">
     <style>
         * {
@@ -69,20 +69,34 @@
             gap: 10px;
         }
 
+        /* Unified button spec - same metrics as the RO control page */
         .btn {
-            padding: 12px 24px;
-            font-weight: bold;
+            padding: 12px 22px;
+            font-weight: 700;
+            font-size: 15px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 14px;
-            transition: transform 0.1s;
+            min-height: 46px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-decoration: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+            transition: transform 0.1s, filter 0.15s, box-shadow 0.15s;
+        }
+
+        .btn:hover:not(:disabled) {
+            filter: brightness(1.15);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         }
 
         .btn:active { transform: scale(0.97); }
         .btn-start { background-color: #10b981; color: #fff; }
         .btn-end { background-color: #ef4444; color: #fff; }
         .btn-export { background-color: #0369a1; color: #fff; }
+        .btn-stepback { background-color: #b45309; color: #fff; }
         .btn:disabled { cursor: not-allowed; opacity: 0.5; }
 
         .btn-nav {
@@ -95,6 +109,11 @@
 
         .btn-registry {
             background-color: #3b82f6;
+            color: #fff;
+        }
+
+        .btn-sailwave {
+            background-color: #8b5cf6;
             color: #fff;
         }
 
@@ -129,6 +148,65 @@
             padding: 15px;
             border-bottom: 2px solid #334155;
             text-align: center;
+            position: relative;
+        }
+
+        .station-badge {
+            background-color: #0369a1;
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 12px;
+            letter-spacing: 1px;
+        }
+
+        .station-toggle {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background-color: #334155;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 3px 8px;
+            cursor: pointer;
+        }
+
+        .station-toggle:hover {
+            background-color: #475569;
+            color: #fff;
+        }
+
+        #stepback-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background-color: #1e2640;
+            color: #f8fafc;
+            border: 2px solid #b45309;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 15px;
+            font-weight: 600;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        #stepback-toast button {
+            background-color: #b45309;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
         }
 
         .column-title {
@@ -157,14 +235,14 @@
             background-color: #1a2332;
             border: 2px solid #334155;
             border-radius: 6px;
-            padding: 8px 12px;
+            padding: 6px 12px;
             cursor: grab;
             transition: all 0.2s;
             user-select: none;
             display: flex;
             align-items: center;
             gap: 10px;
-            min-height: 56px;
+            min-height: 64px;
         }
 
         .sailor-card:hover {
@@ -190,7 +268,7 @@
         }
 
         .sailor-class {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             color: #94a3b8;
             text-transform: uppercase;
@@ -208,15 +286,57 @@
             min-width: 0;
         }
 
-        .sailor-spacer {
+        .sailor-details {
             flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .sailor-name-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .sailor-class-row {
+            display: flex;
+        }
+
+        /* Light scrollbars so the column scroll slider is clearly visible */
+        .columns-wrapper::-webkit-scrollbar,
+        .sailors-list::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+        .columns-wrapper::-webkit-scrollbar-track,
+        .sailors-list::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 6px;
+        }
+
+        .columns-wrapper::-webkit-scrollbar-thumb,
+        .sailors-list::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 6px;
+            border: 2px solid #e2e8f0;
+        }
+
+        .columns-wrapper::-webkit-scrollbar-thumb:hover,
+        .sailors-list::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
         }
 
         .sail-number {
-            font-size: 22px;
+            font-size: 24px;
             font-weight: 900;
             color: #f59e0b;
             flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .lap-counter {
@@ -308,6 +428,7 @@
     <div class="banner">
         <div class="banner-left" style="display: flex; align-items: center; gap: 20px;">
             <h1>⚓ FINISH SHEET</h1>
+            <span id="station-badge" class="station-badge">Station 1</span>
             <a href="/" class="btn btn-nav">← Race Officer Control</a>
         </div>
         
@@ -322,8 +443,9 @@
             <button class="btn btn-registry" id="btn-toggle-registry">👥 Sailor Registry</button>
             <button class="btn btn-start" id="btn-start-race">▶ Start Race</button>
             <button class="btn btn-end" id="btn-end-race" disabled>⏹ End Race</button>
+            <button class="btn btn-stepback" id="btn-step-back" title="Undo this station's most recent lap or finish">↺ Undo</button>
             <button class="btn btn-export" id="btn-export-csv">📥 Export CSV</button>
-            <button class="btn btn-registry" id="btn-refresh-sailwave" style="background-color: #8b5cf6;">🔄 Refresh Sailwave</button>
+            <button class="btn btn-sailwave" id="btn-refresh-sailwave" title="Import sailors from the Sailwave database">📥 Import Sailwave sailors</button>
         </div>
     </div>
 

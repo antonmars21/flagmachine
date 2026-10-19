@@ -1,19 +1,27 @@
 // app.js - Dynamic start sequences support
 const state = { isRunning: false, raceStartTime: null, sequence: [], masterStartTime: "11:30" };
 
+// Resolve a bare flag filename to its URL (class/signal subfolders).
+// The map is injected by index.html; falls back to the legacy flat path.
+function flagUrl(name) {
+    if (!name) return '';
+    const map = window.FLAG_URL_MAP || {};
+    return map[name] || `/static/flags/${name}`;
+}
+
 // Grid color classes for dynamic grids
 const gridColorClasses = [
     'grid-primary', 'grid-secondary', 'grid-tertiary', 'grid-quaternary',
     'grid-quinary', 'grid-senary', 'grid-septenary', 'grid-octonary'
 ];
 
-// Refresh Sailwave data from boat_master.json
+// Import sailors from the Sailwave boat_master.htm export
 async function refreshSailwaveData() {
     const btn = document.getElementById('btn-refresh-sailwave');
     if (!btn) return;
     
     const originalText = btn.innerHTML;
-    btn.innerHTML = '\ud83d\udd04 Refreshing...';
+    btn.innerHTML = '📥 Importing...';
     btn.disabled = true;
     
     try {
@@ -25,15 +33,17 @@ async function refreshSailwaveData() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            alert(`Sailwave refresh successful!\n\n` +
+            alert(`Sailwave sailors imported successfully!
+
+` +
                   `Classes: ${data.imported.classes_new || 0} new, ${data.imported.classes_updated || 0} updated\n` +
                   `Sailors: ${data.imported.sailors_new || 0} new, ${data.imported.sailors_updated || 0} updated\n` +
                   `Total: ${data.imported.total_sailors || 0} sailors in database`);
         } else {
-            alert(`Refresh failed: ${data.message || 'Unknown error'}`);
+            alert(`Import failed: ${data.message || 'Unknown error'}`);
         }
     } catch (error) {
-        alert(`Refresh failed: ${error.message}`);
+        alert(`Import failed: ${error.message}`);
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -472,7 +482,7 @@ function createRow(rowId, data, gridIndex) {
         <div class="event-row-col col-primary-flag">
             <div class="drag-handle">⋮⋮</div>
             <div class="flag-preview-box">
-                <img src="/static/flags/${data.flag}" alt="${data.label}" style="width: 40px; height: 35px; object-fit: contain;">
+                <img src="${flagUrl(data.flag)}" alt="${data.label}" style="width: 40px; height: 35px; object-fit: contain;">
             </div>
         </div>
         <div class="event-row-col col-secondary-flag">
@@ -543,7 +553,7 @@ function createRow(rowId, data, gridIndex) {
                 const item = state.sequence.find(s => s.id === rowId);
                 if (item) {
                     item[flagField] = d.flag;
-                    box.innerHTML = `<img src="/static/flags/${d.flag}" alt="Flag" style="width: 40px; height: 35px; object-fit: contain;">`;
+                    box.innerHTML = `<img src="${flagUrl(d.flag)}" alt="Flag" style="width: 40px; height: 35px; object-fit: contain;">`;
                     syncToServer();
                 }
             } catch (err) {

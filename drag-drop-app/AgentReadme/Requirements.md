@@ -80,7 +80,10 @@ Data integrity (enforced automatically at every app startup):
 - `boat_classes.flag_image` is re-scanned against the files in `/static/flags/`. Classes whose flag is NULL or missing on disk are matched to a flag file by normalized class name (e.g. "Ilca 7" → `ilca7.png`), or a documented alias ("3.7" → `farr3point7.png`). Classes with no matching flag image keep `flag_image = NULL` → their sailors group into Open Category.
 
 Sailor data source (Sailwave integration):
-- Sailors are imported via the "Refresh Sailwave" button from `C:\Users\Public\Documents\Sailwave\Flagmachine_database\Boats_Master.xml`.
+- Sailors are imported via the "Import Sailwave sailors" button (identical on the RO page and
+  both finish sheets) from the Sailwave competitor list: `C:\Users\Public\Documents\Sailwave\Flagmachine_database\Boats_master.htm`
+  (the HTML export; table columns Fleet, Class, Boat, SailNo, HelmName, Handicap). `Boats_Master.xml`
+  remains supported as a fallback when no HTM export is present.
 - The XML `compclass` field (the division, e.g. "ILCA 6") determines a sailor's boat class. `compfleet` (coarse fleet, e.g. "ILCA") is ignored.
 - `short_name` is the helm's first name; `sailor_name` is the full helm name; UID is `SL-<sail_no>`.
 

@@ -79,6 +79,45 @@ def test_record_toggle():
 
 DB_PATH = 'score.db'
 FLAGS_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'flags')
+# Flags are split into classflags/ and signalflags/ (2026-10-16) so a preparatory
+# signal flag (p.png, blue peter) can never be confused with a boat class flag
+# (pclass.png, P Class). The flat folder is honoured as a legacy fallback so an
+# old extract without the subfolders keeps working.
+CLASS_FLAGS_SUBDIR = 'classflags'
+SIGNAL_FLAGS_SUBDIR = 'signalflags'
+FLAG_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.svg')
+
+def _scan_flag_folders():
+    """Return {group: [bare filenames]} for every flag image on disk.
+    Groups: 'class' and 'signal' when the split folders exist; with no
+    subfolders (legacy layout) all flat files report as 'class'."""
+    groups = {}
+    for sub, group in ((CLASS_FLAGS_SUBDIR, 'class'), (SIGNAL_FLAGS_SUBDIR, 'signal')):
+        path = os.path.join(FLAGS_FOLDER, sub)
+        if os.path.isdir(path):
+            files = [f for f in os.listdir(path)
+                     if f.lower().endswith(FLAG_EXTENSIONS)
+                     and os.path.isfile(os.path.join(path, f))]
+            if files:
+                groups[group] = files
+    if not groups and os.path.isdir(FLAGS_FOLDER):
+        flat = [f for f in os.listdir(FLAGS_FOLDER)
+                if f.lower().endswith(FLAG_EXTENSIONS)
+                and os.path.isfile(os.path.join(FLAGS_FOLDER, f))]
+        if flat:
+            groups['class'] = flat
+    return groups
+
+def flag_url(filename):
+    """Resolve a bare flag filename to its URL: classflags/ then signalflags/
+    subfolder, else the legacy flat path. Bare filenames stay in the DB and
+    the start sequence, so class matching and recorded sessions are unaffected."""
+    if not filename:
+        return None
+    for sub in (CLASS_FLAGS_SUBDIR, SIGNAL_FLAGS_SUBDIR):
+        if os.path.exists(os.path.join(FLAGS_FOLDER, sub, filename)):
+            return f'/static/flags/{sub}/{filename}'
+    return f'/static/flags/{filename}'
 SAILWAVE_DB_FOLDER = r'C:\Users\Public\Documents\Sailwave\Flagmachine_database'
 
 def get_db_connection():
@@ -170,6 +209,35 @@ def init_finishsheet_tables():
         FOREIGN KEY(race_id) REFERENCES races(race_id)
     )''')
     
+    # Class-to-station assignments for the multi-station finish sheet (feature 4).
+    # class_key: 'c<class_id>' for a class column, 'open' for Open Category.
+    # Server-truth, kept for the whole day (across races) until toggled again.
+    c.execute('''CREATE TABLE IF NOT EXISTS class_station_assignments (
+        class_key TEXT PRIMARY KEY,
+        station INTEGER NOT NULL,
+        updated_at TEXT
+    )''')
+    
+    # Per-station capture log for the Step Back feature (feature 4): every
+    # lap/finish is logged with the station that captured it, so each screen
+    # reverses only its own most recent action. Nothing is hard-deleted -
+    # undone actions stay in the log so Restore can re-apply them with the
+    # ORIGINAL timestamp.
+    c.execute('''CREATE TABLE IF NOT EXISTS capture_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id INTEGER NOT NULL,
+        uid TEXT NOT NULL,
+        action TEXT NOT NULL,
+        station INTEGER,
+        timestamp TEXT NOT NULL,
+        lap_number INTEGER,
+        ref_id INTEGER,
+        undone INTEGER DEFAULT 0,
+        undone_at TEXT,
+        FOREIGN KEY(race_id) REFERENCES races(race_id),
+        FOREIGN KEY(uid) REFERENCES sailors(uid)
+    )''')
+    
     # Backward-compat: add sequence_number column if it doesn't exist
     c.execute("PRAGMA table_info(race_class_starts)")
     race_class_columns = [col[1] for col in c.fetchall()]
@@ -215,16 +283,15 @@ FLAG_NAME_ALIASES = {
 }
 
 def reconcile_class_flag_images():
-    """Scan static/flags at startup and repair boat_classes.flag_image.
+    """Scan the CLASS flag folder at startup and repair boat_classes.flag_image.
     For each boat class whose flag_image is NULL or does not exactly match
     a file in the flags folder, try to find an image whose name matches the
     class name (normalized: lowercase, ignore spaces/punctuation).
     Classes with no matching image keep flag_image NULL - their sailors
     group into the Open Category until a flag is added."""
-    if not os.path.exists(FLAGS_FOLDER):
-        return
-    valid_ext = ('.png', '.jpg', '.jpeg', '.svg')
-    files = [f for f in os.listdir(FLAGS_FOLDER) if f.lower().endswith(valid_ext)]
+    # Only class flags are scanned (plus the legacy flat folder): signal
+    # flags (p.png, Dflag, ...) must never attach to a boat class.
+    files = _scan_flag_folders().get('class', [])
     if not files:
         return
 
@@ -256,29 +323,24 @@ def reconcile_class_flag_images():
 reconcile_class_flag_images()
 
 def get_dynamic_asset_library():
+    """Flag library for the RO picker: CLASS FLAGS first, then SIGNAL FLAGS,
+    so the class/signal split is visible on screen (no P vs P-Class
+    confusion). Each asset carries the bare filename (flag_image - used for
+    all class matching and recorded sessions) plus its resolved flag_url."""
     assets = []
-    valid_extensions = ('.png', '.jpg', '.jpeg', '.svg')
-    
-    if os.path.exists(FLAGS_FOLDER):
-        for filename in os.listdir(FLAGS_FOLDER):
-            if filename.lower().endswith(valid_extensions):
-                base_name, _ = os.path.splitext(filename)
-                clean_label = base_name.replace('_', ' ').replace('-', ' ').title()
-                # RO hotfix 2026-10-16: every row in a start event defaults to 1 minute
-                default_minutes = 1
-                
-                assets.append({
-                    "label": clean_label,
-                    "flag_image": filename,
-                    "default_minutes": default_minutes
-                })
-    else:
-        assets = [
-            {"label": "ILCA 6", "flag_image": "ilca6.png", "default_minutes": 2},
-            {"label": "P Flag (Prep)", "flag_image": "p_flag.png", "default_minutes": 1},
-            {"label": "Starling", "flag_image": "starling.png", "default_minutes": 2}
-        ]
-    
+    for group in ('class', 'signal'):
+        for filename in _scan_flag_folders().get(group, []):
+            base_name, _ = os.path.splitext(filename)
+            clean_label = base_name.replace('_', ' ').replace('-', ' ').title()
+            # RO hotfix 2026-10-16: every row in a start event defaults to 1 minute
+            default_minutes = 1
+            assets.append({
+                "label": clean_label,
+                "flag_image": filename,
+                "flag_url": flag_url(filename),
+                "group": group,
+                "default_minutes": default_minutes
+            })
     return assets
 
 app_state = {
@@ -293,7 +355,8 @@ app_state = {
     "class_start_times": {},
     "open_start_time": None,
     "race_ended": False,
-    "race_end_timestamp": None
+    "race_end_timestamp": None,
+    "sheet_version": 1
 }
 
 def _end_race_internal():
@@ -408,7 +471,12 @@ def open_class_started():
 @app.route('/')
 def index():
     assets = get_dynamic_asset_library()
-    return render_template('index.html', state=app_state, assets=assets)
+    flag_url_map = {a['flag_image']: a['flag_url'] for a in assets}
+    return render_template(
+        'index.html', state=app_state,
+        class_assets=[a for a in assets if a['group'] == 'class'],
+        signal_assets=[a for a in assets if a['group'] == 'signal'],
+        flag_url_map=flag_url_map)
 
 @app.route('/update-sequence', methods=['POST'])
 def update_sequence():
@@ -506,6 +574,8 @@ def display_state():
             "grid_name": grid_name,
             "flag_image": active_event.get('flag_image'),
             "secondary_flag_image": active_event.get('secondary_flag_image'),
+            "flag_url": flag_url(active_event.get('flag_image')),
+            "secondary_flag_url": flag_url(active_event.get('secondary_flag_image')),
             "live_timer": active_event.get('current_live_timer', '--:--'),
             "display_mode": display_mode
         })
@@ -515,6 +585,8 @@ def display_state():
             "grid_name": "STANDBY", 
             "flag_image": "", 
             "secondary_flag_image": None,
+            "flag_url": "",
+            "secondary_flag_url": None,
             "live_timer": "--:--",
             "display_mode": display_mode
         })
@@ -534,8 +606,36 @@ def update_live_timer():
 
 @app.route('/finishsheet')
 def finishsheet():
-    """Render finish sheet UI for race officer scoring."""
-    return render_template('finishsheet.html')
+    """Render finish sheet UI for race officer scoring. The station number
+    (?station=1|2, default 1) is passed to the template for the tab title;
+    the JS reads the same URL parameter for the station identity."""
+    station = request.args.get('station', type=int)
+    if station not in (1, 2):
+        station = 1
+    return render_template('finishsheet.html', station=station)
+
+def column_class_key(col):
+    """Stable key for station assignment: 'c<class_id>' for a class
+    column, 'open' for the Open Category column."""
+    return 'open' if col.get('class_id') is None else 'c{}'.format(col['class_id'])
+
+def get_station_assignments(ordered_columns):
+    """Class->station map for the CURRENT sheet (server truth).
+    Stored assignments (kept for the day, across races) win; columns with
+    no stored assignment default by sheet position: the first 3 columns
+    go to station 1, the remainder to station 2. Open Category counts as
+    a normal (trailing) column, so it defaults to station 2 whenever
+    3+ columns are on the sheet."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT class_key, station FROM class_station_assignments')
+    stored = {row['class_key']: row['station'] for row in c.fetchall()}
+    conn.close()
+    assignments = {}
+    for idx, col in enumerate(ordered_columns):
+        key = column_class_key(col)
+        assignments[key] = stored.get(key, 1 if idx < 3 else 2)
+    return assignments
 
 @app.route('/api/sailors-for-onwater')
 def sailors_for_onwater():
@@ -736,10 +836,54 @@ def sailors_for_onwater():
             'sailors': open_category_sailors
         })
     
+    # Multi-station finish sheet (feature 4): assign every column to a
+    # station (stored toggle assignments win; default = first 3 columns
+    # to station 1, remainder to station 2). A ?station=1/2 request
+    # returns only that station's columns; without the parameter all
+    # columns are returned (station=None).
+    assignments = get_station_assignments(ordered_columns)
+    for col in ordered_columns:
+        col['class_key'] = column_class_key(col)
+        col['station'] = assignments[col['class_key']]
+    
+    station = request.args.get('station', type=int)
+    if station in (1, 2):
+        ordered_columns = [col for col in ordered_columns if col['station'] == station]
+    
     return jsonify({
         "status": "success",
-        "columns": ordered_columns
+        "columns": ordered_columns,
+        "station": station,
+        "assignments": assignments
     })
+
+@app.route('/api/assign-class-station', methods=['POST'])
+def assign_class_station():
+    """Move a class column to the other station (finish-sheet column
+    header toggle). Server-truth and kept for the whole day, across
+    races, until toggled again. Bumping assignments_version makes every
+    station's 500ms poller re-render its columns sub-second."""
+    payload = request.get_json() or {}
+    class_key = payload.get('class_key')
+    try:
+        station = int(payload.get('station'))
+    except (TypeError, ValueError):
+        station = 0
+    if not class_key or station not in (1, 2):
+        return jsonify({"status": "error",
+                        "message": "class_key and station (1 or 2) required"}), 400
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''INSERT INTO class_station_assignments (class_key, station, updated_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(class_key) DO UPDATE
+                 SET station = excluded.station, updated_at = excluded.updated_at''',
+              (class_key, station, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    # Bump the sheet version so every station's poller re-renders.
+    app_state['sheet_version'] = app_state.get('sheet_version', 1) + 1
+    return jsonify({"status": "success", "class_key": class_key, "station": station})
 
 @app.route('/api/sailors-registry')
 def sailors_registry():
@@ -1065,7 +1209,8 @@ def race_status():
         "open_started": open_class_started(),
         "open_flag_in_sequence": open_flag_in_sequence(),
         "race_ended": app_state.get('race_ended', False),
-        "race_end_timestamp": app_state.get('race_end_timestamp')
+        "race_end_timestamp": app_state.get('race_end_timestamp'),
+        "sheet_version": app_state.get('sheet_version', 1)
     })
 
 @app.route('/api/lap-times/<uid>')
@@ -1247,6 +1392,11 @@ def record_lap():
     payload = request.get_json()
     race_id = app_state.get('race_id')
     uid = payload.get('uid')
+    # Station that captured this (feature 4) - logged for per-screen Step Back
+    try:
+        station = int(payload.get('station'))
+    except (TypeError, ValueError):
+        station = None
     
     if not race_id or not uid:
         conn.close()
@@ -1270,6 +1420,21 @@ def record_lap():
     if not class_in_sequence and not open_class_started():
         conn.close()
         return jsonify({"status": "error", "message": "Open class has not started yet"}), 400
+    
+    # Double-capture guard (feature 4): the same sailor lapped twice within
+    # 2 seconds is a double tap or both operators - reject it. Boats need
+    # minutes per lap, so this never blocks a real lap.
+    guard = c.execute('''SELECT timestamp FROM lap_records
+                         WHERE race_id = ? AND uid = ?
+                         ORDER BY lap_number DESC LIMIT 1''', (race_id, uid)).fetchone()
+    if guard and guard['timestamp']:
+        try:
+            if (datetime.now() - datetime.fromisoformat(guard['timestamp'])).total_seconds() < 2:
+                conn.close()
+                return jsonify({"status": "error",
+                                "message": "Lap already recorded for this sailor less than 2 seconds ago"}), 400
+        except ValueError:
+            pass
     
     try:
         # Ensure the sailor belongs to this race (open-category sailors are
@@ -1297,10 +1462,15 @@ def record_lap():
         
         # Record lap
         lap_time = datetime.now().isoformat()
-        c.execute('''
+        cur = c.execute('''
             INSERT INTO lap_records (race_id, uid, lap_number, timestamp)
             VALUES (?, ?, ?, ?)
         ''', (race_id, uid, lap_number, lap_time))
+        # Log the capture for per-station Step Back (feature 4)
+        c.execute('''INSERT INTO capture_actions
+                      (race_id, uid, action, station, timestamp, lap_number, ref_id)
+                      VALUES (?, ?, 'lap', ?, ?, ?, ?)''',
+                  (race_id, uid, station, lap_time, lap_number, cur.lastrowid))
 
         conn.commit()
         conn.close()
@@ -1319,6 +1489,11 @@ def mark_finish():
     payload = request.get_json()
     race_id = app_state.get('race_id')
     uid = payload.get('uid')
+    # Station that captured this (feature 4) - logged for per-screen Step Back
+    try:
+        station = int(payload.get('station'))
+    except (TypeError, ValueError):
+        station = None
     
     if not race_id or not uid:
         conn.close()
@@ -1361,6 +1536,11 @@ def mark_finish():
             SET finish_time = ?
             WHERE race_id = ? AND uid = ?
         ''', (finish_time, race_id, uid))
+        # Log the capture for per-station Step Back (feature 4)
+        c.execute('''INSERT INTO capture_actions
+                      (race_id, uid, action, station, timestamp)
+                      VALUES (?, ?, 'finish', ?, ?)''',
+                  (race_id, uid, station, finish_time))
         
         conn.commit()
         conn.close()
@@ -1369,6 +1549,127 @@ def mark_finish():
     except Exception as e:
         conn.close()
         return jsonify({"status": "error", "message": str(e)}), 400
+
+def _normalize_station(payload):
+    """Station param for undo/restore: must be 1 or 2."""
+    try:
+        station = int(payload.get('station'))
+    except (TypeError, ValueError):
+        station = 0
+    return station if station in (1, 2) else None
+
+@app.route('/api/undo-last', methods=['POST'])
+def undo_last():
+    """Step Back (feature 4): reverse THIS station's most recent capture.
+    Lap: the logged lap record is removed and the lap count decremented.
+    Finish: the finish time is cleared and the sailor returns to racing.
+    The action stays in the log (undone=1) so /api/restore-last can
+    re-apply it with the ORIGINAL timestamp. The undone action's time
+    drops off the live sheet; all other times keep exact timestamps
+    (agreed with the RO 2026-10-16)."""
+    station = _normalize_station(request.get_json() or {})
+    if station is None:
+        return jsonify({"status": "error", "message": "station (1 or 2) required"}), 400
+    race_id = app_state.get('race_id')
+    if not race_id:
+        return jsonify({"status": "error", "message": "No active race"}), 400
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''SELECT ca.*, s.short_name FROM capture_actions ca
+                 JOIN sailors s ON s.uid = ca.uid
+                 WHERE ca.race_id = ? AND ca.station = ? AND ca.undone = 0
+                 ORDER BY ca.id DESC LIMIT 1''', (race_id, station))
+    action = c.fetchone()
+    if not action:
+        conn.close()
+        return jsonify({"status": "error",
+                        "message": "Nothing to step back for this station"}), 404
+    if action['action'] == 'lap':
+        if not c.execute('SELECT id FROM lap_records WHERE id = ?',
+                         (action['ref_id'],)).fetchone():
+            conn.close()
+            return jsonify({"status": "error",
+                            "message": "That lap was already reversed"}), 409
+        c.execute('DELETE FROM lap_records WHERE id = ?', (action['ref_id'],))
+        c.execute('''UPDATE race_sailors SET lap_count = MAX(lap_count - 1, 0)
+                     WHERE race_id = ? AND uid = ?''', (race_id, action['uid']))
+    else:  # finish
+        row = c.execute('''SELECT finish_time FROM race_sailors
+                           WHERE race_id = ? AND uid = ?''',
+                         (race_id, action['uid'])).fetchone()
+        if (row['finish_time'] if row else None) != action['timestamp']:
+            conn.close()
+            return jsonify({"status": "error",
+                            "message": "That finish was superseded by a later finish"}), 409
+        c.execute('''UPDATE race_sailors SET finish_time = NULL
+                     WHERE race_id = ? AND uid = ?''', (race_id, action['uid']))
+    c.execute('UPDATE capture_actions SET undone = 1, undone_at = ? WHERE id = ?',
+              (datetime.now().isoformat(), action['id']))
+    conn.commit()
+    conn.close()
+    app_state['sheet_version'] = app_state.get('sheet_version', 1) + 1
+    return jsonify({
+        "status": "success",
+        "action": action['action'],
+        "uid": action['uid'],
+        "sailor": action['short_name'],
+        "lap_number": action['lap_number'],
+        "timestamp": action['timestamp'],
+    })
+
+@app.route('/api/restore-last', methods=['POST'])
+def restore_last():
+    """Restore this station's most recently undone capture with its
+    ORIGINAL timestamp - the safety net behind instant Step Back."""
+    station = _normalize_station(request.get_json() or {})
+    if station is None:
+        return jsonify({"status": "error", "message": "station (1 or 2) required"}), 400
+    race_id = app_state.get('race_id')
+    if not race_id:
+        return jsonify({"status": "error", "message": "No active race"}), 400
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''SELECT ca.*, s.short_name FROM capture_actions ca
+                 JOIN sailors s ON s.uid = ca.uid
+                 WHERE ca.race_id = ? AND ca.station = ? AND ca.undone = 1
+                 ORDER BY ca.undone_at DESC LIMIT 1''', (race_id, station))
+    action = c.fetchone()
+    if not action:
+        conn.close()
+        return jsonify({"status": "error",
+                        "message": "Nothing undone to restore for this station"}), 404
+    if action['action'] == 'lap':
+        cur = c.execute('''INSERT INTO lap_records (race_id, uid, lap_number, timestamp)
+                           VALUES (?, ?, ?, ?)''',
+                         (race_id, action['uid'], action['lap_number'], action['timestamp']))
+        c.execute('UPDATE capture_actions SET ref_id = ? WHERE id = ?',
+                  (cur.lastrowid, action['id']))
+        c.execute('''UPDATE race_sailors SET lap_count = lap_count + 1
+                     WHERE race_id = ? AND uid = ?''', (race_id, action['uid']))
+    else:  # finish
+        row = c.execute('''SELECT finish_time FROM race_sailors
+                           WHERE race_id = ? AND uid = ?''',
+                         (race_id, action['uid'])).fetchone()
+        if row and row['finish_time'] is not None:
+            conn.close()
+            return jsonify({"status": "error",
+                            "message": "That sailor has finished again since - nothing restored"}), 409
+        c.execute('''UPDATE race_sailors SET finish_time = ?
+                     WHERE race_id = ? AND uid = ?''',
+                  (action['timestamp'], race_id, action['uid']))
+    c.execute('UPDATE capture_actions SET undone = 0, undone_at = NULL WHERE id = ?',
+              (action['id'],))
+    conn.commit()
+    conn.close()
+    app_state['sheet_version'] = app_state.get('sheet_version', 1) + 1
+    return jsonify({
+        "status": "success",
+        "action": action['action'],
+        "uid": action['uid'],
+        "sailor": action['short_name'],
+        "lap_number": action['lap_number'],
+        "timestamp": action['timestamp'],
+    })
 
 @app.route('/api/get-elapsed-time')
 def get_elapsed_time():
@@ -1409,9 +1710,16 @@ def get_elapsed_time():
 # ==================== SAILWAVE INTEGRATION ====================
 
 def find_sailwave_source():
-    """Locate the Sailwave Boats_Master.xml source file.
-    Prefer the Sailwave database folder; fall back to tempref/."""
+    """Locate the Sailwave competitor source file.
+    Prefer the boat_master.htm listing (the club's actual Sailwave export,
+    agreed with the RO 2026-10-16 - the 'Import Sailwave sailors' button
+    reads it); fall back to Boats_Master.xml, then tempref/."""
     candidates = [
+        # Sailwave writes Boats_master.htm; include case variants (some
+        # setups match these case-sensitively)
+        os.path.join(SAILWAVE_DB_FOLDER, 'Boats_master.htm'),
+        os.path.join(SAILWAVE_DB_FOLDER, 'boat_master.htm'),
+        os.path.join(os.path.dirname(__file__), 'tempref', 'boat_master.htm'),
         os.path.join(SAILWAVE_DB_FOLDER, 'Boats_Master.xml'),
         os.path.join(SAILWAVE_DB_FOLDER, 'boat_master.xml'),
         os.path.join(os.path.dirname(__file__), 'tempref', 'Boats_Master.xml'),
@@ -1426,10 +1734,10 @@ def find_sailwave_source():
 @app.route('/api/refresh-sailwave', methods=['POST'])
 def refresh_sailwave():
     """
-    Import/refresh sailor and boat class data from Sailwave Boats_Master.xml.
+    Import/refresh sailor and boat class data from the Sailwave export.
     
-    This endpoint triggers the import script to read from Boats_Master.xml
-    and update the score.db with the latest data from Sailwave.
+    Reads boat_master.htm (the club's Sailwave HTML competitor list) when
+    present, falling back to Boats_Master.xml, and updates score.db.
     
     Returns:
         {"status": "success", "message": "...", "imported": {...}}
@@ -1452,8 +1760,8 @@ def refresh_sailwave():
     if not xml_path:
         return jsonify({
             "status": "error",
-            "message": f"No Boats_Master.xml found in {SAILWAVE_DB_FOLDER} "
-                       f"or the tempref/ folder."
+            "message": f"No boat_master.htm or Boats_Master.xml found in "
+                       f"{SAILWAVE_DB_FOLDER} or the tempref/ folder."
         }), 404
     
     try:
@@ -1514,7 +1822,8 @@ def refresh_sailwave():
 @app.route('/api/refresh-sailwave-status', methods=['GET'])
 def refresh_sailwave_status():
     """
-    Check if Boats_Master.xml is available for import.
+    Check if the Sailwave export (boat_master.htm preferred, else
+    Boats_Master.xml) is available for import.
     
     Returns:
         {"status": "available" or "not_found", "path": "..."}
@@ -1534,7 +1843,7 @@ def refresh_sailwave_status():
         return jsonify({
             "status": "not_found",
             "path": SAILWAVE_DB_FOLDER,
-            "message": "Boats_Master.xml not found in the Sailwave database folder or tempref/."
+            "message": "boat_master.htm / Boats_Master.xml not found in the Sailwave database folder or tempref/."
         })
 
 
