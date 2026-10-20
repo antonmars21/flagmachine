@@ -13,6 +13,20 @@ in progress
 
 Feature 
 
+======================
+bug backlog
+
+
+4 the 2 end race buttons are not synched, 1 button on each page must stop all timers and chnage race status from running to ended
+5 reset finish sheet does not reset anything - it should clear lap counts etc.
+15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
+allowed time per race is approaching
+18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
+ 
+==================
+resolved
+PASSED ✅ HUMAN TEST 2026-10-16 (Anton: "good all working as expected").
+Feature 4 multi-station finish sheet - delivered this session:
 Feature 4 Step 1 - multi-station class split == CODED 2026-10-16, awaiting human test per
 process rule (Ctrl+F5 both finish sheet screens first - JS is cached):
 - /finishsheet?station=1 or ?station=2 - URL is authoritative, remembered per tab
@@ -107,18 +121,6 @@ import + source preference) + full suite (10 scripts) pass.
 Human test: restart, click Import Sailwave sailors on the RO page, expect the import alert
 with the new wording and no garbage text; repeat on a finish sheet.
 
-======================
-bug backlog
-
-
-4 the 2 end race buttons are not synched, 1 button on each page must stop all timers and chnage race status from running to ended
-5 reset finish sheet does not reset anything - it should clear lap counts etc.
-15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
-allowed time per race is approaching
-18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
- 
-==================
-resolved
 F0 flag folder split (flags moved into static/flags/classflags/ + signalflags/):
 app scanned only the flat folder, so the RO flag picker was EMPTY and every flag URL
 was dead. == Passed ✅ HUMAN TEST 2026-10-16 (RO picker shows CLASS FLAGS + SIGNAL

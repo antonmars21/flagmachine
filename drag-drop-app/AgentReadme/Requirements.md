@@ -418,3 +418,70 @@ CREATE TABLE lap_records (
 - Role-based access control
 - Multi-user concurrent locking
 - Real-time sync to multiple tablets
+
+---
+
+## PART 3: FINISH SHEET v1.3 (Session 6, 2026-10-16) — Multi-Station
+
+All items below PASSED the human browser test 2026-10-16 (process rule 2026-10-15).
+
+### 1. Flag library split (prerequisite, F0)
+- Flags live in `static/flags/classflags/` (boat class flags) and
+  `static/flags/signalflags/` (p.png blue peter, Dflag, black flag, postpone, shortened).
+  The RO flag picker shows two labelled groups: CLASS FLAGS then SIGNAL FLAGS.
+- `boat_classes.flag_image` and the start sequence keep BARE filenames; the server resolves
+  each to its subfolder URL (`flag_url()`). p.png (signal) and pclass.png (P Class) are
+  never merged; the startup repair scans classflags/ only.
+- The outdoor display board shows the active row's flags at their new locations.
+
+### 2. Stations
+- The finish sheet is served per station: `/finishsheet?station=1` or `?station=2`. The URL
+  is authoritative, remembered per tab (sessionStorage), shown as a badge in the banner; the
+  browser tab title reads "Finish sheet 1" / "Finish sheet 2". Plain /finishsheet = station 1.
+- Each station shows ONLY the class columns assigned to it.
+
+### 3. Class-to-station split
+- Default: the FIRST 3 columns on the sheet go to station 1, the remainder (including the
+  Open Category column — it behaves like any other class) to station 2. New classes added
+  later default by sheet position without disturbing stored toggles.
+- A toggle button on each class column header moves that class to the other station so the
+  scorers can balance workload mid-race.
+- Assignments are server-truth in `class_station_assignments` and KEPT FOR THE WHOLE DAY:
+  they survive races, End Race, Reset Finish Sheet and a server restart. 4 classes per
+  station is guidance only (not enforced).
+
+### 4. Undo (per station, one step)
+- Each station has an instant "Undo" button (no confirm): reverses THAT station's most
+  recent capture only — lap or finish, any sailor; never the other operator's. Pressing
+  again steps to that station's previous capture.
+- A toast confirms what was removed ("Stepped back: Lap 3 for Anton (14:03:12)") with a
+  RESTORE button; restore re-applies the capture with its ORIGINAL timestamp.
+- Time policy (agreed with the RO): undo removes only the mistaken action; all other
+  timestamps stay exact; the undone action's time drops off the live sheet (accepted).
+- Server-side 2-second double-capture guard: the same sailor lapped twice within 2s is
+  rejected (double tap or both operators).
+- Every capture carries its station ID (logged in `capture_actions`; record/replay can
+  distinguish screens).
+- All stations re-render within ~0.5s of a toggle, undo or restore (sheet_version in
+  /api/race-status).
+
+### 5. Layout (two rounds of RO feedback, 2026-10-16)
+- Unified button system on all pages: 8px radius, 15px bold text, 46px min height, hover
+  lift, semantic colour classes only (no inline style overrides).
+- RO page: header [Start][Stop][Reset][End Race][Sound On] + clocks + STATE +
+  [Import Sailwave sailors]. Bottom bar: [Display Mode: Flags/Both/Timer] ...
+  [Display Board][Finish Sheet 1][Finish Sheet 2] — Display Board and both finish sheets
+  open in a NEW TAB so the RO page stays put.
+- Finish sheet banner: [FINISH SHEET + station badge] [<- Race Officer Control]
+  [ELAPSED TIME] [Sailor Registry][Start Race][End Race][Undo][Export CSV]
+  [Import Sailwave sailors].
+- Sailor cards are two lines: sailor name + COMPLETE sail number (larger, never truncated)
+  on top, boat class in a smaller row underneath; light-coloured column scrollbars.
+
+### 6. Import Sailwave sailors
+- ONE identical purple button on all pages (RO + both finish sheets), same handler and
+  wording.
+- Source is the Sailwave HTML competitor list `Boats_master.htm` (Sailwave folder preferred,
+  tempref/boat_master.htm next; `Boats_Master.xml` remains a fallback when no HTM exists).
+- Identity rules unchanged: UID = SL-<sail no>, short name = helm's first name,
+  class = the division column (e.g. "ILCA 6"), handicap imported from the Handicap column.

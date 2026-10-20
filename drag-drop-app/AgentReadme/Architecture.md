@@ -437,3 +437,71 @@ AgentReadme/
 3. Implement CSV export for race results
 4. Decommission score.py (remove front-end, archive code)
 5. Deploy to production (Raspberry Pi or cloud)
+
+---
+
+## SESSION 6 (2026-10-16) — Multi-Station Finish Sheet + Flag Split + Sailwave HTM Import
+
+### New in Session 6 (all human-test passed 2026-10-16)
+
+- **Flag folder split (F0)**: flags live in `static/flags/classflags/` + `static/flags/signalflags/`.
+  The RO picker shows CLASS FLAGS + SIGNAL FLAGS groups. `flag_url(filename)` resolves every
+  flag image to its subfolder (RO picker, start event rows, secondary/tertiary slots, display
+  board); bare filenames stay in `boat_classes` and the sequence, so class matching, CSV and
+  recorded sessions are unaffected. The startup repair scans classflags/ only.
+- **Stations**: `/finishsheet?station=1|2`; the route passes the station to the template for
+  the tab title; `getStationFromUrl()` in finishsheet.js (URL authoritative, sessionStorage
+  per tab, default 1); station badge in the banner.
+- **Class-to-station split**: table `class_station_assignments` (class_key `c<class_id>` or
+  `open`, station 1|2, kept for the whole day). `get_station_assignments()`: stored toggles
+  win, default by sheet position (first 3 columns -> station 1). Column-header toggle button
+  POSTs `/api/assign-class-station`.
+- **Undo (per screen)**: table `capture_actions` — every lap/finish logged with its station
+  and ORIGINAL timestamp (laps reference `lap_records.id` via ref_id; undone rows kept for
+  Restore). `/api/record-lap` and `/api/mark-finish` accept a `station` field; a 2s
+  double-capture lap guard rejects the same sailor lapped twice within 2 seconds.
+  `POST /api/undo-last {station}` reverses that station's latest non-undone capture;
+  `POST /api/restore-last {station}` re-applies the most recently undone action with its
+  ORIGINAL timestamp. Superseded finishes refuse with 409. Toast with Restore on the acting
+  station; nothing is hard-deleted.
+- **sheet_version re-render**: `/api/race-status` reports `app_state['sheet_version']`;
+  column toggle, undo and restore bump it; every station's 500ms poller re-renders when it
+  changes (~0.5s convergence).
+- **Sailwave import**: source is `boat_master.htm` (the Sailwave HTML competitor list;
+  Boats_master.htm in the Sailwave folder preferred) with `Boats_Master.xml` fallback.
+  `parse_sailwave_htm()` in scripts/import_sailwave.py maps the table (Fleet, Class, Boat,
+  SailNo, HelmName, Handicap) onto the same boat shape as the XML parser. The
+  'Import Sailwave sailors' button is identical on all pages.
+- **UI**: unified .btn spec across pages; RO bottom bar has Display Board + Finish Sheet 1/2
+  links (all new tab); two-line sailor cards (name + complete sail number, class under);
+  light scrollbars.
+
+### New/changed API routes (Session 6)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/api/assign-class-station` | Move a class column to the other station |
+| POST | `/api/undo-last` | Reverse this station's most recent capture |
+| POST | `/api/restore-last` | Restore the most recently undone capture (original time) |
+| GET | `/api/sailors-for-onwater?station=N` | Station-filtered columns + assignments map |
+| GET | `/finishsheet?station=N` | Per-station page (tab title "Finish sheet N") |
+
+`/api/race-status` now also reports `sheet_version`. `/api/record-lap` and `/api/mark-finish`
+accept (and log) a `station` field.
+
+### Regression scripts added (Session 6)
+
+- `scripts/test_stations.py` — class split: defaults, filtering, toggle, upsert,
+  new-class default, persistence across a race cycle, validation.
+- `scripts/test_stepback.py` — undo/restore with original timestamps, station isolation,
+  2s guard, superseded-finish 409s, validation.
+- `scripts/test_import_htm.py` — boat_master.htm parse + scratch-DB import + source preference.
+
+Full 10-script regression suite passes.
+
+### Known gaps (planned feature 4 remainder)
+
+- Captures do not yet propagate between stations sub-second during a race (SSE planned —
+  add the SSE endpoint to RECORD_NOISE when built).
+- Manual drag order is still tab-local (`race_sailors.placement` still never written).
+- Optional: double-capture dimming ("Station N capturing" while a card is touched).
