@@ -9,7 +9,10 @@ const state = {
     drag_source: null,
     station: null,
     assignments: {},
-    sheet_version: null
+    sheet_version: null,
+    class_start_times: {},
+    open_start_time: null,
+    race_end_timestamp: null
 };
 
 /**
@@ -98,8 +101,9 @@ async function initFinishSheet() {
         refreshBtn.addEventListener('click', refreshSailwaveData);
     }
     
-    // Update elapsed time every second
+    // Update elapsed time every second (banner clock + per-class clocks, bug 15)
     setInterval(updateElapsedTime, 1000);
+    setInterval(updateClassElapsedTimes, 1000);
     
     // Poll for class-start status every 500ms to unlock sailor buttons as classes start
     setInterval(pollClassStarts, 500);
@@ -213,7 +217,11 @@ async function restoreLastStep() {
 function fmtClock(iso) {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (isNaN(d)) return '';
+    // Fixed 24h HH:MM:SS - toLocaleTimeString can render AM/PM depending on
+    // the Windows locale, which is wrong for a race sheet.
+    const p = n => String(n).padStart(2, '0');
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 function showStepBackToast(message, withRestore) {
@@ -276,9 +284,14 @@ function renderColumns(columns) {
         const sequenceNumber = colData.sequence_number || 0;
         const sequenceLabel = sequenceNumber > 0 ? `Start ${sequenceNumber}: ` : '';
         const targetStation = state.station === 1 ? 2 : 1;
+        const elapsedClassId = colData.class_id != null ? colData.class_id : '';
+        // Tidy: class name + elapsed clock on ONE row, no sailor count, no
+        // label - maximise the vertical space for the sailor list.
         header.innerHTML = `
-            <div class="column-title" style="color: ${colData.color_hex || '#f8fafc'}">${sequenceLabel}${colData.class_name}</div>
-            <div class="column-count">${sailors.length} sailor${sailors.length === 1 ? '' : 's'}</div>
+            <div class="column-header-row">
+                <div class="column-title" style="color: ${colData.color_hex || '#f8fafc'}">${sequenceLabel}${colData.class_name}</div>
+                <div class="column-elapsed" data-class-id="${elapsedClassId}">--:--</div>
+            </div>
             <button class="station-toggle" data-class-key="${colData.class_key}" title="Move ${colData.class_name} to Station ${targetStation}">&#10142; ${targetStation}</button>
         `;
         header.querySelector('.station-toggle').addEventListener('click', () => {
@@ -345,9 +358,6 @@ function createSailorCard(sailor, col_num, index) {
             <div class="sailor-name-row">
                 <span class="sailor-name">${sailor.short_name}${finished_class}</span>
                 <span class="sail-number">${sailor.sail_no}</span>
-            </div>
-            <div class="sailor-class-row">
-                <span class="sailor-class">${sailor.boat_class}</span>
             </div>
         </div>
         <input type="checkbox" class="finish-checkbox" data-uid="${sailor.uid}" 
@@ -440,6 +450,9 @@ async function recordLap(uid, card) {
             const lapValue = card.querySelector('.lap-value');
             lapValue.textContent = data.lap_count;
             card.dataset.lapCount = data.lap_count;
+            // Lap timestamps keep being recorded per sailor (own timer from
+            // the first lap onward - DB + CSV exports), but are NOT shown on
+            // the card: no room on screen (RO 2026-10-22).
             if (data.last_lap_time) card.dataset.lastLapTime = data.last_lap_time;
             
             const list = card.parentElement;
@@ -501,6 +514,17 @@ async function pollClassStarts() {
         state.race_id = data.race_id;
         state.race_active = !!data.race_id;
         state.race_ended = !!data.race_ended;
+        // Bug 15: per-class elapsed clocks are computed from these
+        state.class_start_times = data.class_start_times || {};
+        state.open_start_time = data.open_start_time || null;
+        state.race_end_timestamp = data.race_end_timestamp || null;
+        // Bug 4 part B: while the RO control Start is running (or pausing)
+        // the flag machine countdown, this manual Start Race button stays
+        // locked out - all start buttons obey the RO control start button.
+        // ENDED also locks it out (before any class start fired there is no
+        // race record, so fm_status is the only truth) until a Reset
+        // returns to READY.
+        const fmEngaged = ['RUNNING', 'PAUSED', 'ENDED'].includes(data.fm_status);
         
         // Sheet change made on another station (column toggle, step back,
         // restore): re-render this station's columns.
@@ -543,7 +567,7 @@ async function pollClassStarts() {
             }
         });
         
-        if (state.race_active) {
+        if (state.race_active || fmEngaged) {
             document.getElementById('btn-start-race').disabled = true;
             document.getElementById('btn-end-race').disabled = false;
         } else if (!state.race_ended) {
@@ -589,30 +613,40 @@ async function startRace() {
 }
 
 /**
- * End the race - stops all timers, records end time, disables lap/finish inputs.
+ * End the race (bug 4: ONE button on ANY page stops ALL timers everywhere).
+ * Calls the same two endpoints the RO control page uses, so the flag
+ * machine countdown stops on the RO screen and the race status changes
+ * from RUNNING to ENDED for everyone, even if this is pressed before the
+ * first class start has created a race record.
  */
 async function endRace() {
     try {
-        const response = await fetch('/api/end-race', { method: 'POST' });
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            state.race_active = false;
-            state.race_ended = true;
-            
-            document.getElementById('btn-start-race').disabled = true;
-            document.getElementById('btn-end-race').disabled = true;
-            
-            // Disable all lap buttons and finish checkboxes
-            document.querySelectorAll('.btn-lap').forEach(btn => btn.disabled = true);
-            document.querySelectorAll('.finish-checkbox').forEach(cb => {
-                if (!cb.checked) cb.disabled = true;
-            });
-            
-            console.log(`Race ended at ${data.race_end_timestamp}`);
-        } else {
-            alert(data.message || 'Could not end race.');
+        // Same control action as the RO End Race button (stops flag machine)
+        await fetch('/execute-control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'END_RACE' })
+        });
+        // Record the race end time (skipped when no race record exists yet)
+        if (state.race_id) {
+            const response = await fetch('/api/end-race', { method: 'POST' });
+            const data = await response.json();
+            if (data.status !== 'success') {
+                alert(data.message || 'Could not end race.');
+            }
         }
+        
+        state.race_active = false;
+        state.race_ended = true;
+        
+        document.getElementById('btn-start-race').disabled = true;
+        document.getElementById('btn-end-race').disabled = true;
+        
+        // Disable all lap buttons and finish checkboxes
+        document.querySelectorAll('.btn-lap').forEach(btn => btn.disabled = true);
+        document.querySelectorAll('.finish-checkbox').forEach(cb => {
+            if (!cb.checked) cb.disabled = true;
+        });
     } catch (error) {
         console.error("Error ending race:", error);
     }
@@ -641,6 +675,34 @@ async function updateElapsedTime() {
     } catch (error) {
         console.error("Error fetching elapsed time:", error);
     }
+}
+
+/**
+ * Bug 15: per-class elapsed clocks in every column header - the RO can see
+ * how long each class has been racing and judge when the maximum allowed
+ * race time is approaching. Ticks up from that class's own start; freezes
+ * at the race end timestamp once the race has ended. The Open Category
+ * column (data-class-id="") runs from the open start time. No label - just
+ * the mm:ss clock on the class's header row.
+ */
+function updateClassElapsedTimes() {
+    document.querySelectorAll('.column-elapsed').forEach(el => {
+        const classId = el.dataset.classId;
+        const startIso = classId !== '' ? state.class_start_times[String(classId)] : state.open_start_time;
+        if (!startIso) {
+            el.textContent = '--:--';
+            return;
+        }
+        const startedAt = new Date(startIso);
+        const reference = (state.race_ended && state.race_end_timestamp)
+            ? new Date(state.race_end_timestamp)
+            : new Date();
+        let secs = Math.max(0, Math.floor((reference - startedAt) / 1000));
+        const hh = Math.floor(secs / 3600);
+        const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, '0');
+        const ss = String(secs % 60).padStart(2, '0');
+        el.textContent = hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+    });
 }
 
 /**

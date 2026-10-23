@@ -127,12 +127,13 @@ function say(text) {
     }
 }
 
-// Whole-minute mark, 30/20/10s warnings, final 5,4,3,2,1: spoken (beep
-// fallback). 0 / flag down: long low horn - unchanged, it cuts through wind
-// noise and is unmistakable.
+// Voice countdown for the TOTAL time of a start event (bug 25): the first
+// flag of the sequence is read out when the event starts, then the whole
+// minutes remaining, 15 seconds, 10 seconds and the last 5 seconds.
+// 0 / flag down: long low horn - unchanged, it cuts through wind noise.
 const NUM_WORDS = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five',
                     6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
-const WARN_WORDS = { 30: 'thirty seconds', 20: 'twenty seconds', 10: 'ten seconds' };
+const WARN_WORDS = { 15: 'fifteen seconds', 10: 'ten seconds' };
 
 function cueMinute(sec) {
     const m = Math.round(sec / 60);
@@ -146,19 +147,49 @@ function cueTick(sec) {
 }
 function cueHorn()    { beep(220, 1.2, 0, 0.5); beep(220, 1.2, 0.02, 0.4); }
 
+const flagAnnounced = {};  // row id -> true once its flag-change announcement spoke
+
 function resetAudioCues() {
     Object.keys(audioCues).forEach(k => delete audioCues[k]);
+    Object.keys(flagAnnounced).forEach(k => delete flagAnnounced[k]);
+    if ('speechSynthesis' in window) {
+        try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    }
 }
 
-function playCountdownCues(item, rem) {
+/**
+ * Flag-change announcement (bug 25, per RO diagram 2026-10-22): every time a
+ * flag is raised the voice reads THE FLAG NAME plus the time remaining in
+ * the START EVENT at that moment - e.g. a 3x1min event says
+ * 'Ilca 6. Three minutes.' (t=0), 'P. Two minutes.' (t=1:00),
+ * 'Ilca 6. One minute.' (t=2:00).
+ */
+function playFlagChangeCue(row, eventRemainingSec) {
+    if (!soundEnabled) return;
+    if (flagAnnounced[row.id]) return;
+    flagAnnounced[row.id] = true;
+    const cueSec = Math.ceil(eventRemainingSec);
+    const m = Math.round(cueSec / 60);
+    const total = (NUM_WORDS[m] || String(m)) + (m === 1 ? ' minute' : ' minutes');
+    const phrase = `${(row && row.label) || 'Start'}. ${total}`;
+    if (!say(phrase)) { beep(660, 0.12); beep(660, 0.12, 0.18); }
+}
+
+/**
+ * Per-flag countdown cues (bug 25 amended): EVERY flag's own sub-timer gets
+ * its whole minutes, 15 seconds, 10 seconds and the last 5 seconds
+ * (5, 4, 3, 2, 1) - the flag officer needs these beats to raise the next
+ * flag and drop the last one. The flag-down horn at 0 is unchanged.
+ */
+function playRowCues(item, rem) {
     if (!soundEnabled) return;
     const cueSec = Math.ceil(rem);
     const fired = audioCues[item.id] || (audioCues[item.id] = {});
-    if (fired[cueSec]) return;
+    if (fired[cueSec] || cueSec <= 0) return;
     fired[cueSec] = true;
-    if (cueSec > 0 && cueSec % 60 === 0) {
+    if (cueSec % 60 === 0) {
         cueMinute(cueSec);
-    } else if (cueSec === 30 || cueSec === 20 || cueSec === 10) {
+    } else if (cueSec === 15 || cueSec === 10) {
         cueWarning(cueSec);
     } else if (cueSec >= 1 && cueSec <= 5) {
         cueTick(cueSec);
@@ -361,7 +392,11 @@ document.addEventListener('DOMContentLoaded', () => {
         resetAudioCues();
         state.isRunning = true;
         state.raceStartTime = Date.now();
-        state.sequence[0].status = 'ACTIVE';
+        // Do NOT preset row 0's status to ACTIVE here: the flag-change
+        // announcement (bug 25) fires when the countdown tick sees a row go
+        // PENDING -> ACTIVE. Presetting it hides that transition, so the
+        // opening 'flag. Total time.' never speaks. The tick runs within
+        // 100ms and flips it anyway.
         state.sequence[0].grid_index = state.sequence[0].grid_index || 1;
         syncToServer();
         fetch('/update-status', {
@@ -439,6 +474,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(updateCountdown, 100);
     setInterval(syncRaceDurationFromServer, 1000);
     syncRaceDurationFromServer();
+    // Bug 4: one End Race anywhere stops the timers on every page
+    setInterval(syncRaceStateFromServer, 500);
 });
 
 /**
@@ -455,6 +492,44 @@ function syncRaceDurationFromServer() {
             const ss = totalSeconds % 60;
             document.getElementById('race-duration-display').textContent =
                 `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+        }
+    }).catch(() => {});
+}
+
+/**
+ * Bug 4: Start / End Race / Reset are ONE shared control across every page.
+ * The RO page mirrors the server's control state:
+ * - ENDED from any page -> stop this page's countdown/timers, STATE: ENDED.
+ * - RUNNING from any page (RO flag machine OR a finish sheet's Start Race
+ *   manual backup) -> STATE: RUNNING.
+ * - READY after a reset -> STATE: READY.
+ */
+let raceEndedSynced = false;
+let lastSyncedStatus = null;
+function syncRaceStateFromServer() {
+    fetch('/api/race-status').then(r => r.json()).then(data => {
+        const ended = !!data.race_ended || data.fm_status === 'ENDED';
+        // A race counts as RUNNING whichever start button created it -
+        // race_id is the truth for manual-backup starts (bug 4 regression
+        // 2026-10-23: the finish-sheet Start Race left fm_status READY and
+        // the RO page showed READY while the race was live).
+        const raceActive = !!data.race_id && !ended;
+        const serverState = ended ? 'ENDED'
+            : (data.fm_status === 'RUNNING' || raceActive) ? 'RUNNING'
+            : (data.fm_status === 'PAUSED' ? 'PAUSED' : 'READY');
+        if (ended && !raceEndedSynced) {
+            raceEndedSynced = true;
+            state.isRunning = false;      // stops the countdown tick + all sub-timers
+            resetAudioCues();
+            lockUI(false);
+        } else if (!ended && raceEndedSynced && serverState === 'READY') {
+            raceEndedSynced = false;
+        } else if (ended) {
+            raceEndedSynced = true;
+        }
+        // Mirror the shared STATE badge so every page shows the same state
+        if (serverState !== lastSyncedStatus) {
+            updateStatusBadge(serverState);
         }
     }).catch(() => {});
 }
@@ -587,6 +662,12 @@ function updateCountdown() {
     // by grid_index (grid 1 before grid 2), preserving each grid's internal row order.
     const orderedSequence = state.sequence.slice().sort((a, b) => (a.grid_index || 1) - (b.grid_index || 1));
     
+    // Rows that went ACTIVE on this very tick = a flag was just RAISED. The
+    // flag-change announcement speaks now (flag name + event time remaining)
+    // and the row's own coinciding minute call is suppressed so it doesn't
+    // talk over the announcement.
+    const justRaisedRows = new Set();
+    
     let cum = 0;
     orderedSequence.forEach(it => {
         const dur = it.countdown_minutes * 60, start = cum, end = cum + dur, rem = Math.max(0, end - e);
@@ -594,8 +675,8 @@ function updateCountdown() {
         it.status = e < start ? 'PENDING' : e < end ? 'ACTIVE' : 'CLEAR';
         it.current_remaining_seconds = it.status === 'PENDING' ? dur : it.status === 'ACTIVE' ? rem : 0;
         if (it.status === 'ACTIVE' || it.status === 'PENDING') hasAnyActive = true;
-        if (it.status === 'ACTIVE') playCountdownCues(it, rem);
         if (os !== 'ACTIVE' && it.status === 'ACTIVE') {
+            justRaisedRows.add(it.id);
             fetch('/update-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active_id: it.id, grid_index: it.grid_index }) }).catch(console.error);
         }
         if (os !== 'CLEAR' && it.status === 'CLEAR') {
@@ -629,11 +710,31 @@ function updateCountdown() {
     
     // Per-grid "Total Countdown" display: time remaining until that grid's own rows
     // are all complete, accounting for the wait while earlier grids are still running.
+    // Bug 25 (per RO diagram): every flag RAISE announces the flag name + the
+    // event time remaining at that moment ('Ilca 6. Three minutes.' ->
+    // 'P. Two minutes.' -> 'Ilca 6. One minute.'); the 15s / 10s / last-5s
+    // ticks then run against EACH flag's own sub-timer so the flag officer
+    // can drop the flag on the beat. Horn at flag-down unchanged.
     const grids = {}; orderedSequence.forEach(it => { const g = it.grid_index || 1; if (!grids[g]) grids[g] = []; grids[g].push(it); });
     let ag = null, at = 0;
     Object.entries(grids).forEach(([gi, rs]) => {
-        let tot = 0, hap = false;
-        rs.forEach(r => { if (r.status === 'ACTIVE' || r.status === 'PENDING') { tot += r.current_remaining_seconds || r.countdown_minutes * 60; hap = true; } });
+        let tot = 0, hap = false, active = false;
+        rs.forEach(r => { if (r.status === 'ACTIVE' || r.status === 'PENDING') { tot += r.current_remaining_seconds || r.countdown_minutes * 60; hap = true; } if (r.status === 'ACTIVE') active = true; });
+        if (active) {
+            rs.forEach(r => {
+                if (r.status !== 'ACTIVE') return;
+                if (justRaisedRows.has(r.id)) {
+                    // Flag just raised: 'P. Two minutes.' (flag + event time
+                    // remaining), then suppress this row's coinciding minute
+                    // call so it doesn't talk over the announcement.
+                    playFlagChangeCue(r, tot);
+                    const fired = audioCues[r.id] || (audioCues[r.id] = {});
+                    fired[Math.ceil(r.current_remaining_seconds)] = true;
+                    return;
+                }
+                playRowCues(r, r.current_remaining_seconds);
+            });
+        }
         const te = document.getElementById(`timer-grid-${gi}`);
         if (te) { const mm = Math.floor(tot / 60), ss = tot % 60; te.textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`; }
         if (hap && ag === null) { ag = parseInt(gi); at = Math.max(0, Math.ceil(tot / 60)); }
@@ -655,6 +756,7 @@ function updateStatusBadge(st) {
     const b = document.getElementById('global-status-badge');
     b.textContent = `STATE: ${st}`;
     b.className = `badge status-${st.toLowerCase()}`;
+    lastSyncedStatus = st;   // the poller mirrors the server state through this
 }
 
 function lockUI(lk) {

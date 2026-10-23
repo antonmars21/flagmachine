@@ -11,9 +11,161 @@ test. Passing regression scripts alone is not enough.
 =============================
 in progress
 
+Bugs to fix:
+
+ 26 there need to be more space to drage and drop flags into the startevent box, ad a few spaces for additional flags
 
 =============================
 To Test 
+
+HOTFIX 2026-10-22 flag drag-and-drop broken on the RO page == FIXED
+PASSED ✅ HUMAN TEST 2026-10-23 (Anton: "the flag drop works"):
+- Root cause: the bug-25 voice edit left a DUPLICATE 'const audioCues'
+  declaration in app.js (the original at line 65 + a second one in the new
+  cue section). A duplicate const is a fatal JS SyntaxError - the WHOLE
+  app.js failed to parse, so nothing on the RO page ran (no drag and drop,
+  no buttons). Server/app.py was never affected (compiles + all pages
+  render 200).
+- Fix: duplicate declaration removed; both app.js and finishsheet.js now
+  verified with a real JS PARSE check (new Function) - both PARSE OK.
+  Last-known-good app.py backup kept at tempref/app_py_HEAD_11f56bd.py.
+- Full suite (13 scripts) passes; /, both finish sheets and /display
+  render 200. Browser test: Ctrl+F5 the RO page, drag a flag into a start
+  event - it must drop in and show as a row.
+
+BUG 4 end-race + start-button sync == CODED 2026-10-22/23
+PASSED ✅ HUMAN TEST 2026-10-23 (Anton: "ok, those are fixed now")
+(Ctrl+F5 all pages first - JS is cached):
+- End Race is ONE shared control now. The finish sheet End Race buttons send
+  the SAME two calls the RO page uses (/execute-control END_RACE +
+  /api/end-race), so they stop the flag machine countdown even before the
+  first class flag has fired (no race record yet), and the race status goes
+  RUNNING -> ENDED everywhere (races.status ENDED in the DB).
+- The RO page now polls /api/race-status every 0.5s: when the race is ended
+  from ANY page (RO control, finish sheet 1 or 2) the RO countdown stops,
+  all sub-timers freeze, STATE badge shows ENDED. A Reset (fm_status READY)
+  shows STATE: READY again.
+- Part B: /api/race-status now carries fm_status (RO control state). While
+  the RO Start is running the countdown, the Start Race buttons on BOTH
+  finish sheets are locked out (all start buttons obey the RO control start
+  button). They re-enable only after Reset/Reset Finish Sheet. END_RACE
+  also locks them out until a reset.
+- Elapsed/duration clocks already freeze at race end (server-side) - unchanged.
+Regression: scripts/test_button_sync.py (8 checks) + full suite (13 scripts) +
+15-step recorded-session replay all pass.
+REGRESSION FIXED 2026-10-23 (buttons looked unsynched in the browser): the
+finish-sheet Start Race (manual backup) started a race WITHOUT setting the
+shared control state - fm_status stayed READY, so the RO page showed
+STATE: READY while a live race was running and the pages disagreed.
+Fixes: (1) /api/start-race now sets fm_status RUNNING (a race is running no
+matter which page started it); (2) the RO page poller MIRRORS the shared
+state onto its badge - RUNNING (flag machine OR any active race, covers
+old sessions), ENDED, PAUSED, READY; (3) finish-sheet Start Race stays
+locked out while the flag machine is PAUSED too (mid-sequence Stop).
+Verified with a JS simulation of BOTH real files through the full cycle
+(READY -> RO Start -> Pause -> race active -> End from a finish sheet ->
+Reset -> manual-backup Start) - all button states and the RO badge match
+on all three pages in every step.
+Human test (Ctrl+F5 ALL pages first - JS is cached):
+1. press Start Race on a finish sheet -> RO page shows STATE: RUNNING.
+2. press End Race on ANY page -> RO countdown stops (if running), all
+   pages show STATE: ENDED, lap/finish inputs disabled everywhere.
+3. press Reset on the RO page -> all pages back to READY, Start Race
+   re-enabled on the finish sheets.
+4. while the RO countdown runs, the finish-sheet Start Race is greyed.
+
+BUG 15 elapsed time per class == CODED 2026-10-22, awaiting human test per process rule:
+- Every class column header on BOTH finish sheets now shows its own elapsed
+  clock ('Elapsed: mm:ss'), ticking up from THAT class's start time (the
+  Open Category column runs from the open start). Freezes at the race end
+  timestamp when the race ends - so the RO can see when the max allowed
+  race time per class is approaching.
+- No backend changes needed: the poller already receives class_start_times;
+  /api/race-status now also returns open_start_time.
+AMENDED 2026-10-22 after RO feedback (tidy): header is now ONE row - class
+name left, elapsed mm:ss right (NO 'Elapsed:' label, sailor count REMOVED,
+station toggle kept clear of it). Sailor cards are single-line compact rows
+(short name + sail number only, boat class row dropped) to maximise space
+for the sailor lists. Lap-time formats checked: toast is fixed 24h
+HH:MM:SS (toLocaleTimeString could render AM/PM on some Windows locales);
+the detailed CSV Lap Times column is now HH:MM:SS instead of raw ISO
+microseconds.
+AMENDED 2026-10-22 (2nd RO feedback): NO individual per-sailor time display
+on the card - no room on screen. Each sailor's own timing stays RECORDED
+(lap timestamps from the first lap onward - DB + both CSV exports), it is
+just not shown on the card.
+Human test: after each class start, its column header clock starts ticking;
+end the race -> all clocks freeze; cards stay single-line name + sail
+number; lap times still appear in the CSV exports.
+
+BUG 25 voice-over countdown == CODED 2026-10-22, awaiting human test per process rule
+(Sound On, laptop speakers):
+- The voice now follows the TOTAL time of the start event (the grid's Total
+  Countdown), not each sub-timer: when the event starts it reads out the
+  FIRST flag of the sequence plus the total time ('First flag: Ilca 6.
+  Three minutes.'), then every whole minute, then 15 seconds, 10 seconds,
+  and the last 5 seconds (5, 4, 3, 2, 1). Flag-down horn per flag unchanged.
+- The old 30/20-second warnings are replaced by the 15-second call.
+AMENDED 2026-10-22 after RO feedback (tidy): the opening announcement is
+just the flag name - 'Starling. Three minutes.' (no 'First flag:' prefix).
+AMENDED 2026-10-22 (2nd RO feedback - per-flag cues): the countdown cues now
+run for EVERY flag change, not just the event total: each flag's own
+sub-timer announces its whole minutes, 15 seconds, 10 seconds and the last
+5 seconds (5, 4, 3, 2, 1) - the flag officer needs these beats to raise the
+next flag and drop the last one. Horn at flag-down unchanged.
+AMENDED 2026-10-22 (3rd RO feedback + RO diagram - final wording): every
+time a flag is RAISED the voice reads THE FLAG NAME (the row's card label)
+plus the TIME REMAINING IN THE START EVENT at that moment. A 3x1min event
+says: 'Ilca 6. Three minutes.' (t=0) -> 'P. Two minutes.' (t=1:00) ->
+'Ilca 6. One minute.' (t=2:00). Between raises, each flag's own sub-timer
+calls its whole minutes (the raise's coinciding minute call is suppressed
+so it doesn't talk over the announcement), then 'Fifteen seconds',
+'Ten seconds' and the last 5 seconds, then the horn at flag-down.
+Example (RO's Start 2: Pclass 3 min + Pclass 1 min = 4 min total):
+'Pclass. Four minutes.' -> 'Two minutes.' -> 'One minute.' -> 15/10/5-4-3-2-1
+-> horn -> 'Pclass. One minute.' -> 15/10/5-4-3-2-1 -> horn = P Class START.
+REGRESSION FIXED 2026-10-22 (announcements stopped): the RO Start button
+preset the first row's status to ACTIVE, so the countdown tick never saw
+the PENDING -> ACTIVE transition that triggers the flag-change
+announcement - the opening '<flag>. <total time>' never spoke. Fix: the
+preset removed (the tick flips the row within 100ms anyway). Verified with
+a JS simulation running the REAL app.js against the RO diagram sequence:
+'Ilca 6. Three minutes.' / 15 / 10 / 5-4-3-2-1 / horn / 'P. Two minutes.' /
+15 / 10 / 5-4-3-2-1 / horn / 'Ilca 6. One minute.' / 15 / 10 / 5-4-3-2-1 /
+horn = START, class-start POST carries all the event's flags.
+Human test: build a multi-flag start event (e.g. 3 rows of 1 min), press
+Start with Sound On and listen for the full sequence above.
+
+FEATURE 6 Sailwave results by regatta name + matched date == CODED 2026-10-22,
+awaiting human test per process rule:
+- New calendar lookup in app.py reads the HYC Calendar xlsx
+  (C:\Users\Public\Documents\Sailwave\Flagmachine_database\HYC Calendar 2026-2027.xlsx)
+  with a stdlib xlsx reader (no new pip dependency).
+  Wednesday rule honoured: only the Twilight race (from 6pm) is matched,
+  never the earlier training/coaching session (latest start time wins,
+  coaching/learn-to-sail/committee rows are excluded).
+- Check it in the browser: http://localhost:5000/api/race-calendar-event
+  (or ?date=YYYY-MM-DD) returns the matched regatta/series name.
+- The Export CSV filename is now named by regatta + matched date, e.g.
+  'Twilight Series club racing 21-10-2026.csv'; without a calendar match
+  it falls back to race_<id>_results.csv.
+Regression: scripts/test_calendar.py (fixture + the REAL calendar file:
+21 Oct 26 -> Twilight Series club racing, 17 Oct 26 -> A Series (1,2,3),
+12 Dec 26 -> HYC XMAS REGATTS & DINNER).
+
+FEATURE 7 export CSV for direct Sailwave import == CODED 2026-10-22, awaiting
+human test per process rule:
+- The Export CSV button now produces a direct-Sailwave-import CSV: columns
+  Fleet, Class, SailNo, HelmName, Handicap, Race, StartTime, FinishTime,
+  Elapsed, Laps - the field names follow the club's own Sailwave export
+  conventions (Boats_master.htm). HelmName is the FULL sailor name,
+  Elapsed is mm:ss.s (finish - class start). Unfinished sailors export
+  with empty FinishTime/Elapsed so the scorer can code them DNC/DNF.
+- The legacy human-readable layout is still available at
+  /api/export-race-csv?format=detailed.
+Regression: scripts/test_export_sailwave.py + existing test_export_csv.py +
+test_open_flag.py (updated for the new layout) pass.
+Human test: run a race, press Export CSV, then File > Import in Sailwave.
 
 IMPORT SAILWAVE SAILORS - (in testingboat_master.htm source == CODED 2026-10-16, awaiting human test
 per process rule (Ctrl+F5 all pages):
@@ -38,14 +190,11 @@ with the new wording and no garbage text; repeat on a finish sheet.
 bug backlog
 
 
-4 the 2 end race buttons are not synched, 1 button on each page must stop all timers and chnage race status from running to ended
+4 end race / start button sync == CODED 2026-10-22 -> see To Test section
+15 elapsed time per class == CODED 2026-10-22 -> see To Test section
 
-15 add the elapsed time per class for each finish sheet so the race officer will know when the max 
-allowed time per race is approaching
-18 if more than 4 strat events, then any remaining class defaults to open class even though it has a flag
  24 If a sailor is added to the race After their class has started, record the time added to the race
- 25 The voice over count down must be the total time for the start event, read out first flag ,
- then whole minutes, 15 seconds, 10 seconds and then the last 5 seconds, 
+ 25 voice-over total start event countdown == CODED 2026-10-22 -> see To Test section
 ==================
 resolved
 PASSED ✅ HUMAN TEST 2026-10-16 (Anton: "good all working as expected").
@@ -185,8 +334,8 @@ Hot fix list = complete and tested & working
 1 save start sequence for easy set-up
 2 disqualify the sailor 
 3 did not finish
-5 results check from the score.db, to go back and re-Export
-6 The Race calendar has all regatta and series names, use it to do look up for Sailwave results
+5 results check from the score.db, to go back and re-Export, make a page to review and look at race results in the score.db, it has selectors and filters on the top row to make various selections
+
 
 
 

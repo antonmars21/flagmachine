@@ -145,7 +145,7 @@
 
         .column-header {
             background-color: #1e2640;
-            padding: 15px;
+            padding: 12px 60px 12px 12px;
             border-bottom: 2px solid #334155;
             text-align: center;
             position: relative;
@@ -213,12 +213,27 @@
             font-size: 18px;
             font-weight: bold;
             color: #f8fafc;
-            margin-bottom: 5px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        .column-count {
-            font-size: 12px;
-            color: #94a3b8;
+        /* One header row: class name left, elapsed clock right (bug 15 tidy) */
+        .column-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Per-class elapsed clock (bug 15) - ticks up from that class's start */
+        .column-elapsed {
+            font-size: 16px;
+            font-weight: 700;
+            font-family: monospace;
+            color: #f59e0b;
+            flex-shrink: 0;
         }
 
         .sailors-list {
@@ -230,19 +245,19 @@
             padding: 10px;
         }
 
-        /* ========== SAILOR CARD (compact one-line row) ========== */
+        /* ========== SAILOR CARD (single compact line: lap, name, sail no) ========== */
         .sailor-card {
             background-color: #1a2332;
             border: 2px solid #334155;
             border-radius: 6px;
-            padding: 6px 12px;
+            padding: 4px 12px;
             cursor: grab;
             transition: all 0.2s;
             user-select: none;
             display: flex;
             align-items: center;
             gap: 10px;
-            min-height: 64px;
+            min-height: 46px;
         }
 
         .sailor-card:hover {
@@ -267,15 +282,6 @@
             transform: scale(0.95);
         }
 
-        .sailor-class {
-            font-size: 12px;
-            font-weight: 600;
-            color: #94a3b8;
-            text-transform: uppercase;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
         .sailor-name {
             font-size: 16px;
             font-weight: 600;
@@ -290,8 +296,7 @@
             flex: 1;
             min-width: 0;
             display: flex;
-            flex-direction: column;
-            gap: 1px;
+            align-items: center;
         }
 
         .sailor-name-row {
@@ -300,10 +305,7 @@
             justify-content: space-between;
             gap: 10px;
             min-width: 0;
-        }
-
-        .sailor-class-row {
-            display: flex;
+            flex: 1;
         }
 
         /* Light scrollbars so the column scroll slider is clearly visible */
@@ -411,9 +413,9 @@
             }
             
             .sailor-card {
-                padding: 6px 10px;
+                padding: 4px 10px;
                 gap: 8px;
-                min-height: 50px;
+                min-height: 40px;
             }
             
             .sail-number {

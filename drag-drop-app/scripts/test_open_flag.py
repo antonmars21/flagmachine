@@ -98,8 +98,12 @@ open_start_time, open_seq = open_rows[0]
 csv_text = client.get('/api/export-race-csv').get_data(as_text=True)
 zephyr_line = next(l for l in csv_text.splitlines() if 'Zephyr' in l or zephyr_uid in l)
 assert open_start_time in zephyr_line, f'open start time missing from CSV: {zephyr_line}'
-assert zephyr_line.startswith(str(open_seq) + ','), f'open sequence number missing from CSV: {zephyr_line}'
-print('open start persisted and exported: start time + sequence in CSV')
+# Sailwave import format: the open start time is the sailor's StartTime; the
+# legacy layout (?format=detailed) still carries the open sequence number
+detailed = client.get('/api/export-race-csv?format=detailed').get_data(as_text=True)
+zephyr_detailed = next(l for l in detailed.splitlines() if 'Zephyr' in l or zephyr_uid in l)
+assert zephyr_detailed.startswith(str(open_seq) + ','), f'open sequence number missing from detailed CSV: {zephyr_detailed}'
+print('open start persisted and exported: start time in Sailwave CSV + sequence in detailed CSV')
 
 # 5. Reset clears the open start state too
 client.post('/api/reset-race')

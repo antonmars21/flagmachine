@@ -120,6 +120,169 @@ def flag_url(filename):
     return f'/static/flags/{filename}'
 SAILWAVE_DB_FOLDER = r'C:\Users\Public\Documents\Sailwave\Flagmachine_database'
 
+# ==================== RACE CALENDAR (regatta/series naming) ====================
+
+CALENDAR_MONTHS = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                   'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
+# A calendar row counts as racing when one of these appears in the event name
+CALENDAR_RACING_WORDS = ('racing', 'regatt', 'series', 'points race', 'mark foy',
+                         'club sailing', 'club race')
+# ... unless one of these does (training, coaching, admin, social)
+CALENDAR_EXCLUDE_WORDS = ('coaching', 'learn to sail', 'lts', 'training', 'meeting',
+                          'committee', 'open day', 'working bee', 'rigging',
+                          'planning', 'first aid', 'optisail', 'school holiday',
+                          'no sailing', 'no hyc', 'info session', 'muster',
+                          'powerboat', 'end of term', 'icebreaker', 'refresher')
+
+
+def find_calendar_file():
+    """Locate the HYC race calendar workbook (HYC Calendar*.xlsx) in the
+    Sailwave database folder."""
+    try:
+        files = [f for f in os.listdir(SAILWAVE_DB_FOLDER)
+                 if f.lower().startswith('hyc calendar') and f.lower().endswith('.xlsx')]
+    except OSError:
+        return None
+    return os.path.join(SAILWAVE_DB_FOLDER, sorted(files)[0]) if files else None
+
+
+def _xlsx_rows(xlsx_path):
+    """Yield (date_text, time_text, event) per worksheet row. Stdlib-only
+    xlsx reader (zip + XML) so no extra dependency is needed."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    M = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    with zipfile.ZipFile(xlsx_path) as z:
+        shared = []
+        if 'xl/sharedStrings.xml' in z.namelist():
+            root = ET.fromstring(z.read('xl/sharedStrings.xml'))
+            for si in root.findall(f'{{{M}}}si'):
+                shared.append(''.join(t.text or '' for t in si.iter(f'{{{M}}}t')))
+        sheets = sorted(n for n in z.namelist()
+                        if re.match(r'xl/worksheets/sheet[0-9]+[.]xml', n))
+        if not sheets:
+            return []
+        root = ET.fromstring(z.read(sheets[0]))
+        rows = []
+        for row in root.iter(f'{{{M}}}row'):
+            vals = []
+            for c in row.findall(f'{{{M}}}c'):
+                v = c.find(f'{{{M}}}v')
+                val = v.text if v is not None else ''
+                if c.get('t') == 's' and val != '':
+                    val = shared[int(val)]
+                vals.append(val or '')
+            while len(vals) < 3:
+                vals.append('')
+            rows.append(vals[:3])
+        return rows
+
+
+def _parse_calendar_date(text):
+    """'Wed 14 Oct 26' -> date(2026, 10, 14). Date ranges ('Mon 25 - Fri 29
+    Jan 27') and TBC rows return None - they are never club racing events."""
+    if not text:
+        return None
+    m = re.match(r'^(?:Mon|Tues|Wed|Thurs|Fri|Sat|Sun)[a-z]*\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{2})$',
+                 text.strip())
+    if not m:
+        return None
+    mon = m.group(2)[:3].lower()
+    if mon not in CALENDAR_MONTHS:
+        return None
+    try:
+        return datetime(2000 + int(m.group(3)), CALENDAR_MONTHS[mon], int(m.group(1))).date()
+    except ValueError:
+        return None
+
+
+def _parse_calendar_time(val):
+    """Calendar time cell -> (hour, minute). Excel stores times of day as a
+    fraction of 24h (0.75 = 18:00); text cells look like '16:30-19:30'.
+    Returns None when there is no usable time."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        frac = float(s)
+        if 0 < frac < 1:
+            mins = round(frac * 24 * 60)
+            return (mins // 60) % 24, mins % 60
+    except ValueError:
+        pass
+    m = re.match(r'(\d{1,2}):(\d{2})', s)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def get_calendar_event_for_date(target_date, calendar_path=None):
+    """Return the regatta/series name for a date from the HYC race calendar,
+    or None when the calendar/file/date has no racing event.
+
+    Wednesday rule (agreed with the RO): only the Twilight race (from 6pm)
+    is picked, never the earlier training/coaching session - the latest
+    start time wins, so the 18:00 Twilight row beats any earlier row of
+    the same day."""
+    path = calendar_path or find_calendar_file()
+    if not path or not os.path.exists(path):
+        return None
+    candidates = []
+    current_date = None  # empty date cells inherit the previous row's date
+    for date_text, time_text, event in _xlsx_rows(path):
+        d = _parse_calendar_date(date_text)
+        if d:
+            current_date = d
+        ev = (event or '').strip()
+        if not ev or current_date != target_date:
+            continue
+        low = ev.lower()
+        if any(w in low for w in CALENDAR_EXCLUDE_WORDS):
+            continue
+        if not any(w in low for w in CALENDAR_RACING_WORDS):
+            continue
+        candidates.append((ev, _parse_calendar_time(time_text)))
+    if not candidates:
+        return None
+
+    def start_minutes(c):
+        t = c[1]
+        return t[0] * 60 + t[1] if t else -1
+
+    candidates.sort(key=start_minutes, reverse=True)
+    return candidates[0][0]
+
+
+def _race_date(race_id):
+    """The calendar-matching date of a race: its earliest recorded start
+    (class or open), falling back to today."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''SELECT MIN(start_time) FROM (
+                     SELECT MIN(start_time) AS start_time FROM race_class_starts WHERE race_id = ?
+                     UNION ALL
+                     SELECT MIN(start_time) AS start_time FROM race_open_starts WHERE race_id = ?
+                 )''', (race_id, race_id))
+    row = c.fetchone()
+    conn.close()
+    if row and row[0]:
+        try:
+            return datetime.fromisoformat(row[0]).date()
+        except ValueError:
+            pass
+    return datetime.now().date()
+
+
+def _export_filename(event_name, race_id, race_date):
+    """CSV filename named by regatta/series + matched date (feature 6)."""
+    if event_name:
+        safe = re.sub(r'[<>:"/\\|?*]', '', event_name).strip()
+        safe = re.sub(r'\s+', ' ', safe)
+        return f'{safe} {race_date.strftime("%d-%m-%Y")}.csv'
+    return f'race_{race_id}_results.csv'
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -1078,6 +1241,12 @@ def start_race():
         if not app_state.get('open_start_time'):
             app_state['open_start_time'] = now_iso
         
+        # Bug 4: a race is RUNNING no matter which page started it - the
+        # manual backup is a full start of every class, so the shared
+        # control state (fm_status in /api/race-status) must say RUNNING,
+        # keeping every page's start/end/reset buttons in sync.
+        app_state['status'] = 'RUNNING'
+        
         conn.commit()
         conn.close()
         
@@ -1207,10 +1376,36 @@ def race_status():
         "race_start_timestamp": app_state.get('race_start_timestamp'),
         "class_start_times": app_state.get('class_start_times', {}),
         "open_started": open_class_started(),
+        "open_start_time": app_state.get('open_start_time'),
         "open_flag_in_sequence": open_flag_in_sequence(),
         "race_ended": app_state.get('race_ended', False),
         "race_end_timestamp": app_state.get('race_end_timestamp'),
+        "fm_status": app_state.get('status'),
         "sheet_version": app_state.get('sheet_version', 1)
+    })
+
+
+@app.route('/api/race-calendar-event')
+def race_calendar_event():
+    """Regatta/series name for a date from the HYC race calendar (feature 6).
+    ?date=YYYY-MM-DD (default today). Used to name the Sailwave results export;
+    also handy in the browser to sanity-check the calendar lookup."""
+    date_param = request.args.get('date')
+    target = None
+    if date_param:
+        try:
+            target = datetime.strptime(date_param, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"status": "error",
+                            "message": "date must be YYYY-MM-DD"}), 400
+    if target is None:
+        target = datetime.now().date()
+    event = get_calendar_event_for_date(target)
+    return jsonify({
+        "status": "success" if event else "not_found",
+        "date": target.isoformat(),
+        "event": event,
+        "calendar_file": find_calendar_file()
     })
 
 @app.route('/api/lap-times/<uid>')
@@ -1302,7 +1497,15 @@ def reset_finish_sheet():
 
 @app.route('/api/export-race-csv')
 def export_race_csv():
-    """Export current/last race as CSV: class, sailor, start time, laps, end time."""
+    """Export current/last race as CSV for DIRECT SAILWAVE IMPORT (features
+    6+7). Column names follow the Sailwave competitor-list conventions the
+    club already uses (Fleet, Class, SailNo, HelmName, Handicap - as in
+    Boats_master.htm) plus result columns (Race, StartTime, FinishTime,
+    Elapsed, Laps). The filename is named by the regatta/series matched from
+    the HYC race calendar by the race date (Wednesdays: the Twilight race
+    only, from 6pm); without a calendar match it falls back to
+    race_<id>_results.csv. ?format=detailed keeps the legacy human-readable
+    layout for the club's own record keeping."""
     import csv
     import io
     from flask import Response
@@ -1315,7 +1518,8 @@ def export_race_csv():
     c = conn.cursor()
     
     c.execute('''
-        SELECT s.uid, bc.class_name, s.sail_no, s.short_name,
+        SELECT s.uid, bc.class_name, s.boat_class, s.sail_no, s.short_name,
+               s.sailor_name, s.handicap,
                rcs.start_time as class_start_time,
                rs.lap_count, rs.finish_time,
                r.end_time as race_end_time,
@@ -1353,29 +1557,75 @@ def export_race_csv():
             lap_times_by_uid[uid] = []
         lap_times_by_uid[uid].append(lr['timestamp'])
     
+    def fmt_elapsed(finish_iso, start_iso):
+        """Elapsed sail time as mm:ss.s (club convention, e.g. '32:56.3')."""
+        if not finish_iso or not start_iso:
+            return ''
+        try:
+            secs = (datetime.fromisoformat(finish_iso) - datetime.fromisoformat(start_iso)).total_seconds()
+        except ValueError:
+            return ''
+        if secs < 0:
+            secs = 0
+        return f'{int(secs) // 60:02d}:{secs % 60:04.1f}'
+
+    def fmt_clock(iso):
+        """Lap/capture timestamps as a 24h clock (HH:MM:SS) for the
+        human-readable sheet - raw ISO strings with microseconds are hard
+        to read for the scorers."""
+        try:
+            return datetime.fromisoformat(iso).strftime('%H:%M:%S')
+        except (ValueError, TypeError):
+            return iso or ''
+    
+    race_date = _race_date(race_id)
+    regatta = get_calendar_event_for_date(race_date)
+    
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time'])
     
-    for row in rows:
-        uid = row['uid']
-        lap_times = lap_times_by_uid.get(uid, [])
-        lap_times_str = '; '.join(lap_times) if lap_times else ''
-        
-        writer.writerow([
-            row['sequence_number'] if row['sequence_number'] is not None else ((open_start['sequence_number'] if open_start else '') or ''),
-            row['class_name'] or 'Unknown',
-            row['short_name'],
-            row['sail_no'],
-            row['class_start_time'] or (open_start['start_time'] if open_start else ''),
-            row['lap_count'],
-            lap_times_str,
-            row['finish_time'] or '',
-            row['race_end_time'] or ''
-        ])
+    if request.args.get('format') == 'detailed':
+        # Legacy human-readable layout (club record keeping)
+        writer.writerow(['Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time'])
+        for row in rows:
+            uid = row['uid']
+            lap_times = lap_times_by_uid.get(uid, [])
+            lap_times_str = '; '.join(fmt_clock(t) for t in lap_times) if lap_times else ''
+            writer.writerow([
+                row['sequence_number'] if row['sequence_number'] is not None else ((open_start['sequence_number'] if open_start else '') or ''),
+                row['class_name'] or 'Unknown',
+                row['short_name'],
+                row['sail_no'],
+                row['class_start_time'] or (open_start['start_time'] if open_start else ''),
+                row['lap_count'],
+                lap_times_str,
+                row['finish_time'] or '',
+                row['race_end_time'] or ''
+            ])
+        filename = f"race_{race_id}_results.csv"
+    else:
+        # Sailwave import format (feature 7)
+        race_name = regatta or f'Race {race_id}'
+        writer.writerow(['Fleet', 'Class', 'SailNo', 'HelmName', 'Handicap',
+                         'Race', 'StartTime', 'FinishTime', 'Elapsed', 'Laps'])
+        for row in rows:
+            start = row['class_start_time'] or (open_start['start_time'] if open_start else '')
+            fleet = row['class_name'] or row['boat_class'] or 'Open'
+            writer.writerow([
+                fleet,
+                fleet,
+                row['sail_no'],
+                row['sailor_name'] or row['short_name'],
+                row['handicap'] if row['handicap'] is not None else '',
+                race_name,
+                start,
+                row['finish_time'] or '',
+                fmt_elapsed(row['finish_time'], start),
+                row['lap_count']
+            ])
+        filename = _export_filename(regatta, race_id, race_date)
     
     csv_data = output.getvalue()
-    filename = f"race_{race_id}_results.csv"
     
     return Response(
         csv_data,
