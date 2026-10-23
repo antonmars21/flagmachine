@@ -1586,12 +1586,13 @@ def export_race_csv():
     
     if request.args.get('format') == 'detailed':
         # Legacy human-readable layout (club record keeping)
-        writer.writerow(['Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time'])
+        writer.writerow(['Series', 'Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time'])
         for row in rows:
             uid = row['uid']
             lap_times = lap_times_by_uid.get(uid, [])
             lap_times_str = '; '.join(fmt_clock(t) for t in lap_times) if lap_times else ''
             writer.writerow([
+                regatta or '',
                 row['sequence_number'] if row['sequence_number'] is not None else ((open_start['sequence_number'] if open_start else '') or ''),
                 row['class_name'] or 'Unknown',
                 row['short_name'],
@@ -1604,24 +1605,33 @@ def export_race_csv():
             ])
         filename = f"race_{race_id}_results.csv"
     else:
-        # Sailwave import format (feature 7)
-        race_name = regatta or f'Race {race_id}'
+        # Sailwave import format (feature 7). Series = the calendar-matched
+        # series/regatta name (blank when the race date has no calendar
+        # event); Race = the stable race identifier; LapTimes = the 24h
+        # clock of every recorded lap.
         writer.writerow(['Fleet', 'Class', 'SailNo', 'HelmName', 'Handicap',
-                         'Race', 'StartTime', 'FinishTime', 'Elapsed', 'Laps'])
+                         'Series', 'Race', 'StartTime', 'FinishTime', 'Elapsed',
+                         'Laps', 'LapTimes'])
+        series_name = regatta or ''
+        race_label = f'Race {race_id}'
         for row in rows:
+            uid = row['uid']
             start = row['class_start_time'] or (open_start['start_time'] if open_start else '')
             fleet = row['class_name'] or row['boat_class'] or 'Open'
+            lap_times = '; '.join(fmt_clock(t) for t in lap_times_by_uid.get(uid, []))
             writer.writerow([
                 fleet,
                 fleet,
                 row['sail_no'],
                 row['sailor_name'] or row['short_name'],
                 row['handicap'] if row['handicap'] is not None else '',
-                race_name,
+                series_name,
+                race_label,
                 start,
                 row['finish_time'] or '',
                 fmt_elapsed(row['finish_time'], start),
-                row['lap_count']
+                row['lap_count'],
+                lap_times
             ])
         filename = _export_filename(regatta, race_id, race_date)
     

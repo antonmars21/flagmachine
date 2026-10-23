@@ -100,9 +100,10 @@ zephyr_line = next(l for l in csv_text.splitlines() if 'Zephyr' in l or zephyr_u
 assert open_start_time in zephyr_line, f'open start time missing from CSV: {zephyr_line}'
 # Sailwave import format: the open start time is the sailor's StartTime; the
 # legacy layout (?format=detailed) still carries the open sequence number
+# (2nd column - the 1st is the calendar Series name)
 detailed = client.get('/api/export-race-csv?format=detailed').get_data(as_text=True)
 zephyr_detailed = next(l for l in detailed.splitlines() if 'Zephyr' in l or zephyr_uid in l)
-assert zephyr_detailed.startswith(str(open_seq) + ','), f'open sequence number missing from detailed CSV: {zephyr_detailed}'
+assert zephyr_detailed.split(',')[1] == str(open_seq), f'open sequence number missing from detailed CSV: {zephyr_detailed}'
 print('open start persisted and exported: start time in Sailwave CSV + sequence in detailed CSV')
 
 # 5. Reset clears the open start state too

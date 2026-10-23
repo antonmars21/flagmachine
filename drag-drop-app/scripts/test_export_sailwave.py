@@ -76,15 +76,19 @@ assert 'Twilight%20Series%20club%20racing' in disposition or 'Twilight Series cl
     f'filename not regatta-named: {disposition}'
 lines = body.strip().splitlines()
 header = lines[0]
-for col in ('Fleet', 'Class', 'SailNo', 'HelmName', 'Handicap', 'Race', 'StartTime', 'FinishTime', 'Elapsed', 'Laps'):
+for col in ('Fleet', 'Class', 'SailNo', 'HelmName', 'Handicap', 'Series', 'Race',
+            'StartTime', 'FinishTime', 'Elapsed', 'Laps', 'LapTimes'):
     assert col in header, f'missing Sailwave column {col!r} in {header!r}'
-assert 'Twilight Series club racing' in body, 'regatta name missing from Race column'
+assert 'Twilight Series club racing' in body, 'series name missing from the Series column'
 row1 = next(l for l in lines[1:] if meta['SL-1091'] in l)
 assert meta['SL-1091'] in row1, 'finished sailor missing (HelmName must be the full sailor name)'
 assert '32:56' in row1, f'elapsed mm:ss.s missing from: {row1}'
+assert f'Race {race_id}' in row1, f'race identifier missing from: {row1}'
+lap_clock = datetime.fromisoformat(start_iso).strftime('%H:%M:%S')
+assert lap_clock in row1, f'lap time {lap_clock} missing from LapTimes column: {row1}'
 assert cls in body, 'class missing from CSV'
 assert len(lines) == 3, f'expected header + 2 sailors, got {len(lines)} lines'
-print('PASS: Sailwave import CSV (columns, HelmName, elapsed, regatta race name)')
+print('PASS: Sailwave import CSV (columns, HelmName, elapsed, Series, race id, lap times)')
 
 # --- filename fallback without a calendar match ---
 app_module.get_calendar_event_for_date = lambda d, calendar_path=None: None

@@ -98,7 +98,9 @@ Human test: after each class start, its column header clock starts ticking;
 end the race -> all clocks freeze; cards stay single-line name + sail
 number; lap times still appear in the CSV exports.
 
-BUG 25 voice-over countdown == CODED 2026-10-22, awaiting human test per process rule
+BUG 25 voice-over countdown == CODED 2026-10-22/23
+PASSED ✅ HUMAN TEST 2026-10-23 (Anton session wrap-up: "ok, those are fixed now";
+the full sequence was heard working after the preset fix)
 (Sound On, laptop speakers):
 - The voice now follows the TOTAL time of the start event (the grid's Total
   Countdown), not each sub-timer: when the event starts it reads out the
@@ -153,18 +155,25 @@ Regression: scripts/test_calendar.py (fixture + the REAL calendar file:
 21 Oct 26 -> Twilight Series club racing, 17 Oct 26 -> A Series (1,2,3),
 12 Dec 26 -> HYC XMAS REGATTS & DINNER).
 
-FEATURE 7 export CSV for direct Sailwave import == CODED 2026-10-22, awaiting
-human test per process rule:
+FEATURE 7 export CSV for direct Sailwave import == CODED 2026-10-22/23
+PASSED ✅ HUMAN TEST 2026-10-23 (Anton: "redone csv file passed human test"):
 - The Export CSV button now produces a direct-Sailwave-import CSV: columns
-  Fleet, Class, SailNo, HelmName, Handicap, Race, StartTime, FinishTime,
-  Elapsed, Laps - the field names follow the club's own Sailwave export
-  conventions (Boats_master.htm). HelmName is the FULL sailor name,
-  Elapsed is mm:ss.s (finish - class start). Unfinished sailors export
-  with empty FinishTime/Elapsed so the scorer can code them DNC/DNF.
+  Fleet, Class, SailNo, HelmName, Handicap, SERIES, Race, StartTime,
+  FinishTime, Elapsed, Laps, LapTimes - the field names follow the club's own
+  Sailwave export conventions (Boats_master.htm). HelmName is the FULL
+  sailor name, Elapsed is mm:ss.s (finish - class start). Unfinished sailors
+  export with empty FinishTime/Elapsed so the scorer can code them DNC/DNF.
+- AMENDED 2026-10-23 (RO, pre-Sailwave-sync): dedicated SERIES column carries
+  the calendar-matched series/regatta name (blank when the race date has no
+  calendar event); Race is the stable race identifier ('Race <id>');
+  LapTimes column carries every recorded lap as a 24h HH:MM:SS clock
+  ('22:50:44; 22:55:12'). The detailed layout gained the Series column too
+  (first column).
 - The legacy human-readable layout is still available at
   /api/export-race-csv?format=detailed.
-Regression: scripts/test_export_sailwave.py + existing test_export_csv.py +
-test_open_flag.py (updated for the new layout) pass.
+Regression: scripts/test_export_sailwave.py (now checks Series, race id and
+lap times) + existing test_export_csv.py + test_open_flag.py (updated for
+the new layout) pass.
 Human test: run a race, press Export CSV, then File > Import in Sailwave.
 
 IMPORT SAILWAVE SAILORS - (in testingboat_master.htm source == CODED 2026-10-16, awaiting human test
@@ -190,11 +199,11 @@ with the new wording and no garbage text; repeat on a finish sheet.
 bug backlog
 
 
-4 end race / start button sync == CODED 2026-10-22 -> see To Test section
-15 elapsed time per class == CODED 2026-10-22 -> see To Test section
+4 end race / start button sync == PASSED ✅ HUMAN TEST 2026-10-23 -> see To Test section
+15 elapsed time per class == CODED 2026-10-22, awaiting explicit human confirmation -> see To Test section
 
  24 If a sailor is added to the race After their class has started, record the time added to the race
- 25 voice-over total start event countdown == CODED 2026-10-22 -> see To Test section
+ 25 voice-over total start event countdown == PASSED ✅ HUMAN TEST 2026-10-23 -> see To Test section
 ==================
 resolved
 PASSED ✅ HUMAN TEST 2026-10-16 (Anton: "good all working as expected").
