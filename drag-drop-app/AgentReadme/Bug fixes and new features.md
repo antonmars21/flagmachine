@@ -61,6 +61,37 @@ state endpoint, finish_time, class sailors unaffected, no stale leak
 after reset) PASS. Human test: sign on a sailor with no class flag, start
 the race, record laps - the count must survive polls, the other
 station's re-renders and a browser refresh (Ctrl+F5 first - JS is cached).
+DATA REPAIR 2026-10-27 (with backup score.db.backup-20261027): the two
+bogus duplicate lap records were removed from the live score.db (race 65
+lap at 14:23:21, race 66 lap at 15:45:21) and Gabrielle's lap_count in
+both races set to 1 (her real 2nd laps were never captured on the Windows
+machine - the Dell CSVs carry them: 14:42:19 in race 59, 15:45:33 in
+race 60 Dell ids).
+
+ 29 Dell exports: no series name + filename not series/date == CODED 2026-10-27, awaiting human test
+The 24 Oct Dell CSVs came out as race_59/60/61_results.csv with an EMPTY
+Series column, while the same calendar matched fine on the Windows test
+machine (24 Oct = 'Points Races club sailing'). Root cause: the Dell has
+no HYC Calendar xlsx in its Sailwave folder, and the export silently fell
+back. Fix: the calendar now SHIPS WITH THE APP (drag-drop-app/HYC
+Calendar 2026-2027.xlsx) and find_calendar_file() falls back to the app
+folder when the Sailwave folder has no calendar - so every machine
+running a current checkout names exports correctly. Also fixed while
+here: on multi-race days the series+date filename collided (the three
+Saturday races would overwrite each other) - races after the first of
+the day now append their race-of-day number (R2, R3...).
+Regression: scripts/test_export_naming.py (series+date filename, R2/R3
+suffix, empty-Series fallback, app-folder calendar fallback) PASS;
+test_export_csv + test_export_sailwave + test_calendar still PASS.
+24 Oct results regenerated with correct names (races 1-2 from the
+Windows score.db, race 3 from the Dell db - the only complete record):
+Sailing Results 24-10-26/Points Races club sailing 24-10-2026.csv,
+... R2 24-10-2026.csv, ... R3 24-10-2026.csv (new utility:
+scripts/export_race_by_id.py re-exports any recorded race from any
+score.db copy - feature 5 groundwork).
+Human test: after a race, Export CSV must download as
+'<series> <date>.csv' (R2/R3 on later races of the day) with the Series
+column filled.
 
 =============================
 To Test 

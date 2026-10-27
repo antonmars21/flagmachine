@@ -136,14 +136,20 @@ CALENDAR_EXCLUDE_WORDS = ('coaching', 'learn to sail', 'lts', 'training', 'meeti
 
 
 def find_calendar_file():
-    """Locate the HYC race calendar workbook (HYC Calendar*.xlsx) in the
-    Sailwave database folder."""
-    try:
-        files = [f for f in os.listdir(SAILWAVE_DB_FOLDER)
-                 if f.lower().startswith('hyc calendar') and f.lower().endswith('.xlsx')]
-    except OSError:
-        return None
-    return os.path.join(SAILWAVE_DB_FOLDER, sorted(files)[0]) if files else None
+    """Locate the HYC race calendar workbook (HYC Calendar*.xlsx): first in
+    the Sailwave database folder, then in the app folder (the calendar ships
+    with the app - bug 29: the Dell had no calendar in its Sailwave folder,
+    so every export silently fell back to race_<id>_results.csv with an
+    empty Series column)."""
+    for folder in (SAILWAVE_DB_FOLDER, os.path.dirname(os.path.abspath(__file__))):
+        try:
+            files = [f for f in os.listdir(folder)
+                     if f.lower().startswith('hyc calendar') and f.lower().endswith('.xlsx')]
+        except OSError:
+            continue
+        if files:
+            return os.path.join(folder, sorted(files)[0])
+    return None
 
 
 def _xlsx_rows(xlsx_path):
@@ -275,12 +281,48 @@ def _race_date(race_id):
     return datetime.now().date()
 
 
-def _export_filename(event_name, race_id, race_date):
-    """CSV filename named by regatta/series + matched date (feature 6)."""
+def _race_ordinal_of_day(race_id, race_date):
+    """1-based position of this race among the day's started races (by
+    earliest recorded start), so multi-race days (e.g. the three Saturday
+    races) get distinct export filenames - R2, R3... after the first."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT r.race_id AS rid, MIN(s.start_time) AS st
+        FROM races r
+        JOIN (
+            SELECT race_id, start_time FROM race_class_starts
+            UNION ALL
+            SELECT race_id, start_time FROM race_open_starts
+        ) s ON s.race_id = r.race_id
+        GROUP BY r.race_id
+    ''')
+    same_day = []
+    for row in c.fetchall():
+        if not row['st']:
+            continue
+        try:
+            if datetime.fromisoformat(row['st']).date() == race_date:
+                same_day.append(row['rid'])
+        except ValueError:
+            continue
+    conn.close()
+    same_day.sort()
+    try:
+        return same_day.index(race_id) + 1
+    except ValueError:
+        return 1
+
+
+def _export_filename(event_name, race_id, race_date, ordinal=1):
+    """CSV filename named by regatta/series + matched date (feature 6).
+    Multi-race days append the race-of-day number (R2, R3...) so the day's
+    races never overwrite each other in the downloads folder."""
     if event_name:
         safe = re.sub(r'[<>:"/\\|?*]', '', event_name).strip()
         safe = re.sub(r'\s+', ' ', safe)
-        return f'{safe} {race_date.strftime("%d-%m-%Y")}.csv'
+        suffix = f' R{ordinal}' if ordinal > 1 else ''
+        return f'{safe}{suffix} {race_date.strftime("%d-%m-%Y")}.csv'
     return f'race_{race_id}_results.csv'
 
 def get_db_connection():
@@ -1726,7 +1768,8 @@ def export_race_csv():
                 row['lap_count'],
                 lap_times
             ])
-        filename = _export_filename(regatta, race_id, race_date)
+        filename = _export_filename(regatta, race_id, race_date,
+                                     _race_ordinal_of_day(race_id, race_date))
     
     csv_data = output.getvalue()
     

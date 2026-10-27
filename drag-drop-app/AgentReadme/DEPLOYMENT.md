@@ -115,6 +115,16 @@ pip install Flask
 - Check that race_id exists in races table
 - Verify lap records exist for CSV lap times data
 
+### Export filename has no series name (race_<id>_results.csv)
+- The export names the file and fills the Series column from the HYC race
+  calendar (HYC Calendar*.xlsx). The app looks for it in the Sailwave
+  database folder (`C:\Users\Public\Documents\Sailwave\Flagmachine_database`)
+  first, then in the app folder - the calendar ships with the app
+  (drag-drop-app/HYC Calendar 2026-2027.xlsx). If a machine still exports
+  `race_<id>_results.csv` with an empty Series, its calendar is missing or
+  outdated on BOTH locations: copy the current xlsx into the Sailwave
+  database folder.
+
 ---
 
 ## Usage Tips
