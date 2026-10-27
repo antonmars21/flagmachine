@@ -39,24 +39,3 @@ Recommended for this club: keep this file as the master copy (markdown), then pr
 | **VS Code "Markdown PDF"** extension, or dillinger.io | Paste the markdown, export PDF. Nothing to install (dillinger) or one extension (VS Code). | Easy |
 | **Word / Google Docs** | Paste and format by hand; good if you want full control. | Manual work |
 | **MkDocs / GitBook** | Turns markdown into a website with a table of contents — best if the manual lives on the club laptop for reading on screen. | More technical |
-
-Best fit for retired-sailor users: generate the manual once with **Scribe** while clicking through a practice race (it captures the actual screens with arrows on the buttons), then save the result as a PDF and print a copy for each scorer station.
-
----
-
-## Original RO draft notes (2026-10-27, kept for reference)
-
-instuctions:
-1 set the flags - at least 1 class flag optional 1 signal flag - max 3 flags
-2 go to a station 1 or 2 - open sail registry, tik sailors signed on
-DO NOT Start RACES fro This Screen - go back to Race Office Control
-3 click start to begin count downs
-4 go back to the finish sheets, drag browser tabs to seperate onto the 2 screens 0- 2 people can work simultaneously
-5 record laps - we would like reasoably accurate times - pres blue button
-6 record finish, tick in the white box
-7 when needed click finish race
-8 export rsults and save to downlaods folder
-9 open the sailor register, resetthe the sailors
-10 go to race officer screen click reset
-
-redy for the next race

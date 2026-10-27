@@ -6,7 +6,7 @@ test. Passing regression scripts alone is not enough.
 **Bugs
 
 
-
+32 - the navigation from RO control to station closes RO control tab. notign complexity, 1) coild we open in application window not browsers? - conside no navigation bi=uttons, the tabs are opened when start.bat less options for user
 
 =============================
 in progress

@@ -470,8 +470,9 @@ All items below PASSED the human browser test 2026-10-16 (process rule 2026-10-1
   lift, semantic colour classes only (no inline style overrides).
 - RO page: header [Start][Stop][Reset][End Race][Sound On] + clocks + STATE +
   [Import Sailwave sailors]. Bottom bar: [Display Mode: Flags/Both/Timer] ...
-  [Display Board][Finish Sheet 1][Finish Sheet 2] — Display Board and both finish sheets
-  open in a NEW TAB so the RO page stays put.
+  [Display Board][Finish Sheet 1][Finish Sheet 2] — AMENDED 2026-10-27 (bug 30):
+  the station buttons navigate THIS tab (one button, one destination); only the
+  Display Board opens a new tab (it runs on the separate outdoor screen).
 - Finish sheet banner: [FINISH SHEET + station badge] [<- Race Officer Control]
   [ELAPSED TIME] [Sailor Registry][Start Race][End Race][Undo][Export CSV]
   [Import Sailwave sailors].
@@ -485,3 +486,77 @@ All items below PASSED the human browser test 2026-10-16 (process rule 2026-10-1
   tempref/boat_master.htm next; `Boats_Master.xml` remains a fallback when no HTM exists).
 - Identity rules unchanged: UID = SL-<sail no>, short name = helm's first name,
   class = the division column (e.g. "ILCA 6"), handicap imported from the Handicap column.
+
+---
+
+## PART 4 (2026-10-20 → 2026-10-27) — Sailwave Series Export + Race-Day Robustness
+
+Requirements agreed with the RO during the first field racedays (A Series
+17 Oct, Points Races 24 Oct). Bugs 28 + 30 passed their human tests;
+27 / 29 / 31 are coded and awaiting the next race-day browser test.
+
+### 1. Sailwave CSV export naming (bug 29)
+- The export filename is named by the SERIES matched from the HYC race
+  calendar plus the race date: `<Series> <DD-MM-YYYY>.csv`; without a
+  calendar match it falls back to `race_<id>_results.csv`.
+- The Series column carries the same matched series name (blank without a
+  calendar match).
+- Races after the first of their series append their race number to the
+  filename (` R2`, ` R3`…) so the day's races never overwrite each other.
+
+### 2. Series race numbers (RO request 2026-10-27)
+- Sailwave needs the race number WITHIN a series, incremental across the
+  whole season — NOT the DB race id and NOT a per-day number (Twilight
+  Series runs R1, R2, R3… every Wednesday over the weeks).
+- Every STARTED race whose date maps to the same calendar series counts,
+  ordered by earliest recorded start; numbers stay stable as races are
+  added. Races on dates with no calendar series fall back to the
+  race-of-day number.
+- The calendar ships WITH THE APP (`drag-drop-app/HYC Calendar
+  2026-2027.xlsx`); the Sailwave database folder wins when it has one — so
+  every machine (incl. the Dell) names exports without extra setup.
+
+### 3. Race state must survive a server restart (bug 27)
+- If the app restarts mid-race, the RUNNING race is recovered at startup:
+  recent (<12h) races are adopted back into memory (End Race, laps and
+  export target the LIVE race); older orphans are closed ENDED at their
+  last activity time.
+- The finish-sheet Start Race (manual backup) must NEVER produce a second
+  concurrent race for the same sailing.
+
+### 4. On-sheet lap counts must be the truth (bug 28)
+- Open-category sailors (and late sign-ons) show their REAL lap count and
+  finish state on every poll, re-render and browser refresh — the counter
+  must never reset to 0 while the race is live.
+
+### 5. Navigation goes to ONE destination (bug 30)
+- Every work-page button (Finish Sheet 1/2, Race Officer Control)
+  navigates the CURRENT tab. No button may spawn a new browser session.
+- The Display Board link is the ONLY exception (separate outdoor screen).
+
+### 6. The RO page must not lose state (bug 31)
+- Navigating away and back (or refreshing) keeps the start sequence:
+  every flag (primary/secondary/tertiary), label, duration and grid number.
+- A countdown that was RUNNING keeps ticking with the CORRECT remaining
+  time — no reset to initial values, no stopped clock.
+- Class starts that completed while the RO page was away are recorded on
+  return, BACKDATED to their true crossing time (and never duplicated).
+- The catch-up is silent: no pile-up of horns/announcements for flags
+  that moved while the page was away.
+- KNOWN LIMITATION: the countdown only ticks while an RO page is open; a
+  start falling due while the page is away only reaches the finish sheet
+  when the RO returns. Keep the RO page on its own screen while the
+  countdown runs (as on the water anyway). Server-side timing is the
+  future fix.
+
+### 7. Re-export any recorded race (feature 5 groundwork)
+- `scripts/export_race_by_id.py --race <id> [--db <db>] [--out <folder>]`
+  re-exports a recorded race with the correct series name and race number,
+  always from a scratch copy — the live score.db is never opened directly.
+
+### 8. Data safety on race days
+- Back up `score.db` before any surgery (naming:
+  `score.db.backup-<YYYYMMDD>`); all repairs are transactional and
+  verified inside the transaction before commit.
+- Regression scripts are hermetic: they never test against the live
+  score.db and they clear the race history in their scratch copies.
