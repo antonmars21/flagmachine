@@ -453,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/execute-control', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'START' })
+            body: JSON.stringify({ action: 'START', countdown_started_ms: state.raceStartTime })
         }).catch(console.error);
         updateStatusBadge('RUNNING');
         lockUI(true);
@@ -572,6 +572,20 @@ function syncRaceStateFromServer() {
             raceEndedSynced = false;
         } else if (ended) {
             raceEndedSynced = true;
+        }
+        // Bug 31: resume a countdown that was running when the page was left
+        // or reloaded. The server remembers when Start was pressed (epoch
+        // ms), so the clock CONTINUES from the real elapsed time instead of
+        // resetting. The first tick catches up silently and re-fires any
+        // class start that completed while the page was away, backdated to
+        // its true crossing time (the server keeps the first start it
+        // recorded, so nothing duplicates).
+        if (!state.isRunning && !state.raceStartTime && data.fm_countdown_started_ms
+                && data.fm_status === 'RUNNING' && !ended && state.sequence.length) {
+            state.isRunning = true;
+            state.raceStartTime = data.fm_countdown_started_ms;
+            state.catchUpTick = true;
+            lockUI(true);
         }
         // Mirror the shared STATE badge so every page shows the same state
         if (serverState !== lastSyncedStatus) {
@@ -701,6 +715,11 @@ function createRow(rowId, data, gridIndex) {
 function updateCountdown() {
     if (!state.isRunning || !state.raceStartTime) return;
     const e = Math.floor((Date.now() - state.raceStartTime) / 1000);
+    // Bug 31: first tick after a resume (page reloaded mid-countdown) -
+    // flags that went up/down while the page was away must NOT blast all
+    // their horns and announcements at once; the visual state and the class
+    // starts still catch up (starts are idempotent on the server).
+    const catchUp = !!state.catchUpTick;
     let hasAnyActive = false;
     
     // SEQUENTIAL across grids: Start 1's rows run first, then Start 2's rows begin
@@ -726,7 +745,7 @@ function updateCountdown() {
             fetch('/update-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active_id: it.id, grid_index: it.grid_index }) }).catch(console.error);
         }
         if (os !== 'CLEAR' && it.status === 'CLEAR') {
-            cueHorn();  // flag down - the RO hears the sub-timer finish
+            if (!catchUp) cueHorn();  // flag down - the RO hears the sub-timer finish
             // A sub-timer completed. The class START is the end of the start
             // event's FULL flag sequence (class flag, +P, D flag...), so only
             // notify the Finish Sheet when the LAST row of this grid completes.
@@ -742,7 +761,11 @@ function updateCountdown() {
                     if (r.secondary_flag_image) flags.push(r.secondary_flag_image);
                     if (r.tertiary_flag_image) flags.push(r.tertiary_flag_image);
                 });
-                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_images: flags, sequence_number: grid }) }).catch(console.error);
+                // Bug 31: send the TRUE crossing time (the row's scheduled
+                // end on the countdown clock). On a normal tick it is 'now'
+                // within 100ms; catching up after a reload it backdates
+                // starts that completed while the page was away.
+                fetch('/api/class-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_images: flags, sequence_number: grid, started_at_ms: state.raceStartTime + end * 1000 }) }).catch(console.error);
             }
         }
         const re = document.getElementById(it.id);
@@ -773,12 +796,12 @@ function updateCountdown() {
                     // Flag just raised: 'P. Two minutes.' (flag + event time
                     // remaining), then suppress this row's coinciding minute
                     // call so it doesn't talk over the announcement.
-                    playFlagChangeCue(r, tot);
+                    if (!catchUp) playFlagChangeCue(r, tot);
                     const fired = audioCues[r.id] || (audioCues[r.id] = {});
                     fired[Math.ceil(r.current_remaining_seconds)] = true;
                     return;
                 }
-                playRowCues(r, r.current_remaining_seconds);
+                if (!catchUp) playRowCues(r, r.current_remaining_seconds);
             });
         }
         const te = document.getElementById(`timer-grid-${gi}`);
@@ -791,6 +814,8 @@ function updateCountdown() {
     } else if (!hasAnyActive) {
         fetch('/update-live-timer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live_timer: '0' }) }).catch(console.error);
     }
+    // Bug 31: the catch-up tick is over - normal ticks speak their cues again
+    state.catchUpTick = false;
 }
 
 function updateClock() {

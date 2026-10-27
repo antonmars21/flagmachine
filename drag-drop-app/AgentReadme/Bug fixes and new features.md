@@ -94,6 +94,20 @@ Finish Sheet 1, then Race Officer Control, then Finish Sheet 2 - the
 whole round trip must happen in the SAME tab with no new tabs opening.
 
  31 RO page comes up EMPTY (no flags, no settings) after navigating back from a station == CODED 2026-10-27, awaiting human test
+AMENDED same day after the first human test: "nearly - going back to the RO
+control resets to start time number and stops the clock". The sequence now
+restores, but a countdown that was RUNNING reset to its initial values
+and stopped. Root cause: the countdown clock is client-side and nothing
+told the server when Start was pressed. Fix (part 2): /execute-control
+START now records fm_countdown_started_ms (epoch ms, POSTed by the RO
+page), /api/race-status carries it, and the RO page's 500ms poller
+RESUMES the countdown from the real elapsed time when it sees fm RUNNING
++ a stored start (STOP/RESET/END_RACE clear it). The first tick after a
+resume catches up SILENTLY (no horn blast / no announcement pile-up) and
+re-fires any class start that completed while the page was away,
+BACKDATED to its true crossing time (/api/class-start accepts optional
+started_at_ms; only past values accepted; re-fires are ignored - first
+trigger wins, no duplicates).
 RO report 2026-10-27 (found while human-testing bug 30): the Race Officer
 Control button navigates back correctly, but the RO page loads FRESH - all
 flags and settings are gone. Same on any refresh of the RO page. Root
@@ -110,14 +124,20 @@ itself runs in the RO tab that pressed Start, so keep the RO page on the
 RO screen while a countdown is running (as on the water anyway).
 Regression: scripts/test_ro_restore.py (sequence embedded with rows/
 flags/grids, [] embeds on fresh sessions, app.js rebuilds on load incl.
-2nd/3rd flag boxes) PASS; js balance check on app.js PASS; full suite
-PASS (test_export_naming + test_export_sailwave made hermetic - clear the
-race history in their scratch, because the live DB accumulates same-day
-test races and the series race number counts every started race).
+2nd/3rd flag boxes; countdown_started_ms stored/cleared, race-status
+carries it, class-start backdates to the true crossing time, re-fires
+ignored, app.js resumes + catches up silently) PASS; js balance check on
+app.js PASS; full suite PASS (test_export_naming + test_export_sailwave
+made hermetic - clear the race history in their scratch, because the live
+DB accumulates same-day test races and the series race number counts
+every started race).
 Human test (Ctrl+F5 the RO page first - HTML + JS are cached): build a
-sequence with 2 starts and a secondary flag, open Finish Sheet 1, click
-'Race Officer Control' - the sequence must still be there, flags and
-minutes included. F5 on the RO page must also keep it.
+sequence with 2 starts and a secondary flag, press START, open Finish
+Sheet 1, click 'Race Officer Control' - the clock must STILL BE TICKING
+at the correct remaining time (not reset, not stopped). F5 on the RO
+page mid-countdown must also resume the clock. Classes that finish while
+the page is away must appear started (with their true start times) on
+return.
 
  29 Dell exports: no series name + filename not series/date == CODED 2026-10-27, awaiting human test
 The 24 Oct Dell CSVs came out as race_59/60/61_results.csv with an EMPTY

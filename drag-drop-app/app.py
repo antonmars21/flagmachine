@@ -7,6 +7,7 @@ import re
 import json
 import sqlite3
 import threading
+import time
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 
@@ -609,6 +610,9 @@ app_state = {
     "open_start_time": None,
     "race_ended": False,
     "race_end_timestamp": None,
+    # Bug 31: when the RO pressed Start (epoch ms) so a reloaded RO page can
+    # RESUME the countdown instead of resetting it; None = no countdown running
+    "fm_countdown_started_ms": None,
     "sheet_version": 1
 }
 
@@ -871,15 +875,23 @@ def execute_control():
     if action == 'START':
         app_state['status'] = 'RUNNING'
         app_state['race_duration'] = '00:00:00'
+        # Bug 31: remember when the countdown started (epoch ms, sent by the
+        # RO page) so a reloaded/navigated-back RO page resumes the clock
+        app_state['fm_countdown_started_ms'] = payload.get('countdown_started_ms')
     elif action == 'STOP':
         app_state['status'] = 'PAUSED'
+        # Pause keeps the page's own timing; a later Start restarts the
+        # countdown from zero (unchanged behaviour), so nothing to resume
+        app_state['fm_countdown_started_ms'] = None
     elif action == 'RESET':
         app_state['status'] = 'READY'
         app_state['race_duration'] = '00:00:00'
+        app_state['fm_countdown_started_ms'] = None
     elif action == 'END_RACE':
         app_state['status'] = 'ENDED'
         if 'duration' in payload:
             app_state['race_duration'] = payload['duration']
+        app_state['fm_countdown_started_ms'] = None
         _end_race_internal()
     return jsonify({"status": "success", "current_state": app_state['status'], "race_duration": app_state['race_duration']})
 
@@ -1452,6 +1464,18 @@ def class_start():
     payload = request.get_json() or {}
     sequence_number = payload.get('sequence_number', 1)
 
+    # Bug 31: the RO page may reload mid-countdown; catching up on rows that
+    # completed while it was away, it sends the TRUE crossing time so late
+    # class starts are recorded accurately. Only accept the past (a
+    # future/garbage value falls back to now).
+    start_iso = datetime.now().isoformat()
+    try:
+        started_ms = int(payload.get('started_at_ms'))
+        if 0 < started_ms <= time.time() * 1000 + 5000:
+            start_iso = datetime.fromtimestamp(started_ms / 1000).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        pass
+
     flags = payload.get('flag_images')
     if not flags and payload.get('flag_image'):
         flags = [payload['flag_image']]
@@ -1481,7 +1505,7 @@ def class_start():
                 flag_base = os.path.splitext(os.path.basename(flag_image))[0].lower()
                 if flag_base in OPEN_FLAG_NAMES:
                     if not app_state.get('open_start_time'):
-                        app_state['open_start_time'] = datetime.now().isoformat()
+                        app_state['open_start_time'] = start_iso
                         # Persist the open start so CSV exports keep the open
                         # fleet's start time (UNIQUE(race_id) -> idempotent)
                         c.execute('''
@@ -1518,8 +1542,10 @@ def class_start():
                             VALUES (?, ?, 0, NULL)
                         ''', (race_id, uid))
 
-                # Record class start time (idempotent - first trigger wins)
-                now_iso = datetime.now().isoformat()
+                # Record class start time (idempotent - first trigger wins;
+                # bug 31: backdated to the true crossing when catching up
+                # after a reload)
+                now_iso = start_iso
                 c.execute('''
                     INSERT OR IGNORE INTO race_class_starts (race_id, class_id, start_time, sequence_number, source)
                     VALUES (?, ?, ?, ?, 'flag_machine')
@@ -1564,6 +1590,7 @@ def race_status():
         "race_ended": app_state.get('race_ended', False),
         "race_end_timestamp": app_state.get('race_end_timestamp'),
         "fm_status": app_state.get('status'),
+        "fm_countdown_started_ms": app_state.get('fm_countdown_started_ms'),
         "sheet_version": app_state.get('sheet_version', 1)
     })
 
