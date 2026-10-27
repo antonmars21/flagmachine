@@ -15,6 +15,53 @@ Bugs to fix:
 
  26 there need to be more space to drage and drop flags into the startevent box, ad a few spaces for additional flags
 
+ 27 3rd race Sat 24 Oct 26 (race 67) has NO results - server restarted mid-race == CODED 2026-10-27, awaiting human test
+Evidence from score.db (backup taken: score.db.backup-20261027):
+- race 67 started via flag machine 16:02-16:08 (3 start events), 7 sailors
+  recorded lap 1 at 16:20-16:21, then nothing. No finishes. status still
+  RUNNING - never ended.
+- race 68 created 16:59:30 by the finish-sheet Start Race (manual_backup,
+  all classes started at one instant) WHILE 67 was still running; 3 lap
+  records logged 2s later (machine-speed, not scorer clicks); ended 17:12
+  with no finishes.
+- races 65 + 66 (races 1 and 2 that day) are healthy: 12 finishes each.
+Root cause: race state (app_state: race_id, class_start_times,
+open_start_time) is MEMORY-ONLY. After a mid-race Flask restart nothing
+recovers the DB's RUNNING race: /api/start-race then auto-creates a NEW
+race (duplicate), /api/end-race ends only the in-memory one, so the real
+race is orphaned RUNNING with its laps but no results.
+Fix (app.py recover_running_race(), runs at app start only - never at
+import, so regression scripts are unaffected): a RUNNING race with
+activity in the last 12h is ADOPTED back into app_state (end-race, laps,
+CSV export all target the live race); older RUNNING races are abandoned
+crash orphans and are closed ENDED at their last activity time. Next
+START.bat will auto-close the current orphans (races 60 + 67).
+Regression: scripts/test_race_recovery.py (adopt recent + close stale +
+end-race on recovered race + reset unblocked + no-op when clean) PASS.
+Human test: mid-race, restart Flask (restart_flask.bat) - the finish
+sheet must keep scoring the SAME race (no new race id), End Race ends it;
+a stale RUNNING race older than 12h must come up ENDED after a restart.
+
+ 28 open-category lap counter resets to 0 on every poll/refresh == CODED 2026-10-27, awaiting human test
+Seen 24 Oct by the scorer (Gabrielle Marais, Europe - no class flag, so
+Open Category): the on-sheet lap counter lagged by one (lap 1 showed 0,
+lap 2 showed 1), a browser refresh jumped it back to 0, and the scorer
+re-clicked - recording duplicate laps 2s/2min apart in races 65 + 66
+(14:23:21 after 14:21:29; 15:45:21 after 15:45:14). The Dell sheet showed
+clean lap times (14:21:48 / 14:42:19), so the Windows sheet was the broken
+one. Root cause: /api/sailors-for-onwater serves open-category sailors
+ONLY from the live-rows query, which hardcoded '0 as lap_count' (the
+started-classes query filters on s.class_id, which is NULL for open
+sailors) - so every poll, sheet re-render and browser refresh reset the
+displayed count even though race_sailors had the true count. Fix: live
+rows now LEFT JOIN race_sailors and carry the real lap_count/finish_time
+(late sign-ons before their first lap still show 0, which is correct).
+Regression: scripts/test_open_lap_counts.py (lap 1 + lap 2 through the
+state endpoint, finish_time, class sailors unaffected, no stale leak
+after reset) PASS. Human test: sign on a sailor with no class flag, start
+the race, record laps - the count must survive polls, the other
+station's re-renders and a browser refresh (Ctrl+F5 first - JS is cached).
+
 =============================
 To Test 
 

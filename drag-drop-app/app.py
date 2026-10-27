@@ -629,6 +629,91 @@ def open_class_started():
     return bool(app_state.get('race_id'))
 
 
+def _race_last_activity(c, race_id):
+    """Latest recorded activity time (local ISO) for a race: class starts,
+    open start, laps. Used to tell a mid-race restart (minutes old, adopt it)
+    from an abandoned crash (hours/days old, close it)."""
+    latest = None
+    c.execute('''SELECT MAX(start_time) AS t FROM race_class_starts WHERE race_id = ?''', (race_id,))
+    row = c.fetchone()
+    if row and row['t']:
+        latest = row['t']
+    c.execute('SELECT MAX(start_time) AS t FROM race_open_starts WHERE race_id = ?', (race_id,))
+    row = c.fetchone()
+    if row and row['t'] and (latest is None or row['t'] > latest):
+        latest = row['t']
+    c.execute('SELECT MAX(timestamp) AS t FROM lap_records WHERE race_id = ?', (race_id,))
+    row = c.fetchone()
+    if row and row['t'] and (latest is None or row['t'] > latest):
+        latest = row['t']
+    return latest
+
+
+def recover_running_race(max_age_hours=12):
+    """Bug 27: race state (race_id, class_start_times, open_start_time) is
+    memory-only, so a mid-race server restart orphaned the RUNNING race -
+    the finish sheet's manual Start Race then created a DUPLICATE race (24
+    Oct: race 67 kept RUNNING while race 68 was started and ended), and the
+    real race could never be ended or exported. Called at app start only
+    (never at import - regression scripts swap DB_PATH after importing):
+    - A RUNNING race with activity in the last max_age_hours is ADOPTED back
+      into app_state, so End Race / laps / export all target the live race.
+    - Older RUNNING races were abandoned by a crash (nobody pressed End
+      Race) and are closed as ENDED so they stop blocking the new session.
+    """
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT race_id FROM races WHERE status = 'RUNNING' ORDER BY race_id")
+        running = [row['race_id'] for row in c.fetchall()]
+        if not running:
+            return None
+        now = datetime.now()
+        adopted = None
+        for race_id in running:  # newest first
+            last = _race_last_activity(c, race_id)
+            try:
+                age_hours = ((now - datetime.fromisoformat(last)).total_seconds() / 3600
+                             if last else 999)
+            except ValueError:
+                age_hours = 999
+            if age_hours > max_age_hours:
+                # Abandoned mid-race crash: close it at its last activity time
+                # (frozen, like a normal End Race) instead of dragging a stale
+                # race into the new session.
+                c.execute('UPDATE races SET end_time = ?, status = ? WHERE race_id = ?',
+                          (last or now.isoformat(), 'ENDED', race_id))
+                conn.commit()
+                print(f"[race {race_id}] RUNNING but stale ({age_hours:.1f}h old) - "
+                      f"marked ENDED (bug 27 recovery)")
+                continue
+            # Recent race: adopt it back into memory so the sheet keeps
+            # scoring the SAME race after the restart.
+            c.execute('''SELECT class_id, start_time FROM race_class_starts
+                         WHERE race_id = ?''', (race_id,))
+            class_start_times = {str(row['class_id']): row['start_time']
+                                for row in c.fetchall() if row['class_id'] is not None}
+            c.execute('''SELECT start_time FROM race_open_starts
+                         WHERE race_id = ? ORDER BY start_time LIMIT 1''', (race_id,))
+            orow = c.fetchone()
+            app_state['race_id'] = race_id
+            app_state['race_start_timestamp'] = (
+                class_start_times and min(class_start_times.values())
+                or (orow['start_time'] if orow else None)
+                or now.isoformat())
+            app_state['class_start_times'] = class_start_times
+            app_state['open_start_time'] = orow['start_time'] if orow else None
+            app_state['race_ended'] = False
+            app_state['race_end_timestamp'] = None
+            app_state['status'] = 'RUNNING'
+            adopted = race_id
+            print(f"[race {race_id}] RUNNING race recovered after restart "
+                  f"(bug 27) - laps/finishes/export continue this race")
+        return adopted
+    finally:
+        conn.close()
+
+
 # ==================== FLAG MACHINE ROUTES ====================
 
 @app.route('/')
@@ -848,31 +933,39 @@ def sailors_for_onwater():
     # Also includes sailors who signed on AFTER their class started (late sign-ons,
     # e.g. returning after boat repairs): their class is started but they are not in
     # the locked roster (race_sailors) yet, so they stay live until first lap/finish.
+    # Bug 28: live rows must carry the REAL lap_count/finish_time from race_sailors
+    # once the sailor has joined the roster (open-category sailors and late sign-ons
+    # are ONLY ever served by this query - the started-classes query filters on
+    # s.class_id, which is NULL for open sailors). A hardcoded 0 reset the on-sheet
+    # lap counter on every poll/refresh, so scorers re-clicked and recorded
+    # duplicate laps seconds apart (24 Oct: Gabrielle Marais, Europe/Open).
     if started_class_ids:
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
-                   0 as lap_count, NULL as finish_time, NULL as placement,
+                   COALESCE(rs.lap_count, 0) as lap_count, rs.finish_time, rs.placement,
                    bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
                    NULL as sequence_number
             FROM sailors s
             LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
+            LEFT JOIN race_sailors rs ON rs.race_id = ? AND rs.uid = s.uid
             WHERE s.racing_today = 1
               AND (s.class_id IS NULL
                    OR s.class_id NOT IN ({})
                    OR s.uid NOT IN (SELECT uid FROM race_sailors WHERE race_id = ?))
             ORDER BY s.boat_class, s.seed
-        '''.format(','.join('?' * len(started_class_ids))), (*started_class_ids, race_id))
+        '''.format(','.join('?' * len(started_class_ids))), (race_id, *started_class_ids, race_id))
     else:
         c.execute('''
             SELECT s.uid, s.sail_no, s.short_name, s.boat_class, s.seed, s.handicap,
-                   0 as lap_count, NULL as finish_time, NULL as placement,
+                   COALESCE(rs.lap_count, 0) as lap_count, rs.finish_time, rs.placement,
                    bc.class_id, bc.class_name, bc.flag_image, bc.color_hex,
                    NULL as sequence_number
             FROM sailors s
             LEFT JOIN boat_classes bc ON s.class_id = bc.class_id
+            LEFT JOIN race_sailors rs ON rs.race_id = ? AND rs.uid = s.uid
             WHERE s.racing_today = 1
             ORDER BY s.boat_class, s.seed
-        ''')
+        ''', (race_id,))
     live_rows = c.fetchall()
 
     # Last lap timestamp per sailor for this race (tie-break for on-water ordering)
@@ -2108,4 +2201,9 @@ def refresh_sailwave_status():
 
 
 if __name__ == '__main__':
+    # Bug 27: after a mid-race restart, adopt the RUNNING race from the DB
+    # (recent) or close abandoned ones (stale) before serving. Runs in the
+    # real entry point only - regression scripts import the module and swap
+    # DB_PATH afterwards, so no import-time DB access may happen here.
+    recover_running_race()
     app.run(host='localhost', port=5000, debug=True)
