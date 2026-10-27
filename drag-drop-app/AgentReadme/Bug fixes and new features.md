@@ -42,7 +42,8 @@ Human test: mid-race, restart Flask (restart_flask.bat) - the finish
 sheet must keep scoring the SAME race (no new race id), End Race ends it;
 a stale RUNNING race older than 12h must come up ENDED after a restart.
 
- 28 open-category lap counter resets to 0 on every poll/refresh == CODED 2026-10-27, awaiting human test
+ 28 open-category lap counter resets to 0 on every poll/refresh == FIXED
+PASSED ✅ HUMAN TEST 2026-10-27 (Anton: "lap counter is working in the current test")
 Seen 24 Oct by the scorer (Gabrielle Marais, Europe - no class flag, so
 Open Category): the on-sheet lap counter lagged by one (lap 1 showed 0,
 lap 2 showed 1), a browser refresh jumped it back to 0, and the scorer
@@ -83,15 +84,28 @@ the day now append their race-of-day number (R2, R3...).
 Regression: scripts/test_export_naming.py (series+date filename, R2/R3
 suffix, empty-Series fallback, app-folder calendar fallback) PASS;
 test_export_csv + test_export_sailwave + test_calendar still PASS.
-24 Oct results regenerated with correct names (races 1-2 from the
-Windows score.db, race 3 from the Dell db - the only complete record):
-Sailing Results 24-10-26/Points Races club sailing 24-10-2026.csv,
-... R2 24-10-2026.csv, ... R3 24-10-2026.csv (new utility:
-scripts/export_race_by_id.py re-exports any recorded race from any
-score.db copy - feature 5 groundwork).
+SERIES RACE NUMBERING (RO request 2026-10-27): Sailwave needs the race
+number WITHIN the series, incremental across the whole season (Twilight
+Series runs R1, R2, R3... every Wednesday over the weeks), not per day
+and not the DB race id. The Race column now carries that number: every
+started race whose date maps to the same calendar series counts, ordered
+by earliest recorded start (races with no calendar series fall back to
+the race-of-day number). The filename R-suffix uses the same number, so
+same-day races still cannot overwrite each other. The calendar lookup was
+refactored to one xlsx parse per export (date -> event map) so numbering
+every race stays cheap. Regression: test_export_naming.py now also checks
+R1..R4 numbering across two weeks of the same series.
+24 Oct results regenerated with correct names and race numbers (races
+1-2 from the Windows score.db, race 3 from the Dell db - the only
+complete record): Sailing Results 24-10-26/Points Races club sailing
+24-10-2026.csv (Race 1), ... R2 24-10-2026.csv (Race 2), ...
+R3 24-10-2026.csv (Race 3) (new utility: scripts/export_race_by_id.py
+re-exports any recorded race from any score.db copy - feature 5
+groundwork).
 Human test: after a race, Export CSV must download as
-'<series> <date>.csv' (R2/R3 on later races of the day) with the Series
-column filled.
+'<series> <date>.csv' (R2/R3 for later races of the series) with the
+Series column filled and the Race column showing the series race number
+(R1 on a series' first race, R2 on the second Twilight Wednesday, ...).
 
 =============================
 To Test 

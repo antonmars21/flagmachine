@@ -224,6 +224,37 @@ def _parse_calendar_time(val):
     return None
 
 
+def _calendar_events_by_date(calendar_path=None):
+    """date -> event name for EVERY racing date in the calendar. Same rules
+    as the single-date lookup: non-racing rows are skipped, and the latest
+    start-time row of a day wins (Wednesday rule: the 18:00 Twilight row
+    beats any earlier row of the same day). One xlsx parse for all dates,
+    so series race numbering can look up every race with one read."""
+    path = calendar_path or find_calendar_file()
+    if not path or not os.path.exists(path):
+        return {}
+    events = {}
+    current_date = None  # empty date cells inherit the previous row's date
+    for date_text, time_text, event in _xlsx_rows(path):
+        d = _parse_calendar_date(date_text)
+        if d:
+            current_date = d
+        ev = (event or '').strip()
+        if not ev or not current_date:
+            continue
+        low = ev.lower()
+        if any(w in low for w in CALENDAR_EXCLUDE_WORDS):
+            continue
+        if not any(w in low for w in CALENDAR_RACING_WORDS):
+            continue
+        t = _parse_calendar_time(time_text)
+        prev = events.get(current_date)
+        # latest start time wins (None = no usable time, always loses)
+        if prev is None or (t is not None and (prev[1] is None or t > prev[1])):
+            events[current_date] = (ev, t)
+    return {d: ev for d, (ev, t) in events.items()}
+
+
 def get_calendar_event_for_date(target_date, calendar_path=None):
     """Return the regatta/series name for a date from the HYC race calendar,
     or None when the calendar/file/date has no racing event.
@@ -232,33 +263,7 @@ def get_calendar_event_for_date(target_date, calendar_path=None):
     is picked, never the earlier training/coaching session - the latest
     start time wins, so the 18:00 Twilight row beats any earlier row of
     the same day."""
-    path = calendar_path or find_calendar_file()
-    if not path or not os.path.exists(path):
-        return None
-    candidates = []
-    current_date = None  # empty date cells inherit the previous row's date
-    for date_text, time_text, event in _xlsx_rows(path):
-        d = _parse_calendar_date(date_text)
-        if d:
-            current_date = d
-        ev = (event or '').strip()
-        if not ev or current_date != target_date:
-            continue
-        low = ev.lower()
-        if any(w in low for w in CALENDAR_EXCLUDE_WORDS):
-            continue
-        if not any(w in low for w in CALENDAR_RACING_WORDS):
-            continue
-        candidates.append((ev, _parse_calendar_time(time_text)))
-    if not candidates:
-        return None
-
-    def start_minutes(c):
-        t = c[1]
-        return t[0] * 60 + t[1] if t else -1
-
-    candidates.sort(key=start_minutes, reverse=True)
-    return candidates[0][0]
+    return _calendar_events_by_date(calendar_path).get(target_date)
 
 
 def _race_date(race_id):
@@ -314,9 +319,52 @@ def _race_ordinal_of_day(race_id, race_date):
         return 1
 
 
+def _series_race_number(race_id):
+    """Sailwave race number of this race WITHIN its series: incremental
+    across the whole series (e.g. Twilight Series runs R1, R2, R3... every
+    Wednesday over the weeks), NOT per day. Every started race whose date
+    maps to the same calendar series counts, ordered by earliest recorded
+    start - so numbers stay stable as new races are added. Returns None
+    when the race's date has no calendar series."""
+    events = _calendar_events_by_date()
+    race_date = _race_date(race_id)
+    series = events.get(race_date)
+    if not series:
+        return None
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT r.race_id AS rid, MIN(s.start_time) AS st
+        FROM races r
+        JOIN (
+            SELECT race_id, start_time FROM race_class_starts
+            UNION ALL
+            SELECT race_id, start_time FROM race_open_starts
+        ) s ON s.race_id = r.race_id
+        GROUP BY r.race_id
+    ''')
+    same_series = []
+    for row in c.fetchall():
+        if not row['st']:
+            continue
+        try:
+            d = datetime.fromisoformat(row['st']).date()
+        except ValueError:
+            continue
+        if events.get(d) == series:
+            same_series.append((row['st'], row['rid']))
+    conn.close()
+    same_series.sort()
+    for number, (_, rid) in enumerate(same_series, 1):
+        if rid == race_id:
+            return number
+    return None
+
+
 def _export_filename(event_name, race_id, race_date, ordinal=1):
     """CSV filename named by regatta/series + matched date (feature 6).
-    Multi-race days append the race-of-day number (R2, R3...) so the day's
+    The suffix is the race's number within the series (R2, R3...) - or the
+    race-of-day number when the date has no calendar series - so the day's
     races never overwrite each other in the downloads folder."""
     if event_name:
         safe = re.sub(r'[<>:"/\\|?*]', '', event_name).strip()
@@ -1748,7 +1796,12 @@ def export_race_csv():
                          'Series', 'Race', 'StartTime', 'FinishTime', 'Elapsed',
                          'Laps', 'LapTimes'])
         series_name = regatta or ''
-        race_label = f'Race {race_id}'
+        # Sailwave race number: incremental WITHIN the series across the
+        # whole season (Twilight Series runs R1, R2... every Wednesday),
+        # not the DB race id. Without a calendar series the race-of-day
+        # number keeps same-day exports distinguishable.
+        race_number = _series_race_number(race_id) or _race_ordinal_of_day(race_id, race_date)
+        race_label = f'Race {race_number}'
         for row in rows:
             uid = row['uid']
             start = row['class_start_time'] or (open_start['start_time'] if open_start else '')
@@ -1768,8 +1821,7 @@ def export_race_csv():
                 row['lap_count'],
                 lap_times
             ])
-        filename = _export_filename(regatta, race_id, race_date,
-                                     _race_ordinal_of_day(race_id, race_date))
+        filename = _export_filename(regatta, race_id, race_date, race_number)
     
     csv_data = output.getvalue()
     

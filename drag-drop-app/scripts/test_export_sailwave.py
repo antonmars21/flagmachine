@@ -59,8 +59,13 @@ meta = dict(conn.execute("SELECT uid, sailor_name FROM sailors WHERE uid IN ('SL
 cls = conn.execute("SELECT class_name FROM boat_classes WHERE class_id = ?", (class_id,)).fetchone()[0]
 conn.close()
 
-# Deterministic regatta name (calendar lookup itself is covered by test_calendar.py)
+# Deterministic regatta name (calendar lookup itself is covered by
+# test_calendar.py). Both lookup paths are patched: the Race column now
+# carries the race number WITHIN the series (incremental across the season),
+# not the DB race id.
+_today = datetime.now().date()
 app_module.get_calendar_event_for_date = lambda d, calendar_path=None: 'Twilight Series club racing'
+app_module._calendar_events_by_date = lambda calendar_path=None: {_today: 'Twilight Series club racing'}
 
 client = app_module.app.test_client()
 resp = client.get('/api/export-race-csv')
@@ -83,7 +88,7 @@ assert 'Twilight Series club racing' in body, 'series name missing from the Seri
 row1 = next(l for l in lines[1:] if meta['SL-1091'] in l)
 assert meta['SL-1091'] in row1, 'finished sailor missing (HelmName must be the full sailor name)'
 assert '32:56' in row1, f'elapsed mm:ss.s missing from: {row1}'
-assert f'Race {race_id}' in row1, f'race identifier missing from: {row1}'
+assert ',Race 1,' in row1, f'series race number missing from: {row1}'
 lap_clock = datetime.fromisoformat(start_iso).strftime('%H:%M:%S')
 assert lap_clock in row1, f'lap time {lap_clock} missing from LapTimes column: {row1}'
 assert cls in body, 'class missing from CSV'

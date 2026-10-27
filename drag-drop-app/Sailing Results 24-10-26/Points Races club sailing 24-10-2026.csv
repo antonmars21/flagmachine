@@ -1,15 +1,15 @@
 Fleet,Class,SailNo,HelmName,Handicap,Series,Race,StartTime,FinishTime,Elapsed,Laps,LapTimes
-Europe,Europe,KZ-29,Gabrielle Marais,1.0,Points Races club sailing,Race 65,2026-10-24T13:59:47.826004,2026-10-24T14:53:49.594642,54:01.8,1,14:21:29
-Ilca 6,Ilca 6,187898,Lucy Millar,5.0,Points Races club sailing,Race 65,2026-10-24T13:56:47.521544,2026-10-24T14:46:57.674984,50:10.2,2,14:12:35; 14:31:21
-Ilca 6,Ilca 6,210823,Werner Hennig,4.0,Points Races club sailing,Race 65,2026-10-24T13:56:47.521544,2026-10-24T14:45:38.397629,48:50.9,2,14:11:35; 14:28:59
-Ilca 6,Ilca 6,211516,Rose Jackson Liew,9.0,Points Races club sailing,Race 65,2026-10-24T13:56:47.521544,2026-10-24T14:47:39.112700,50:51.6,2,14:13:10; 14:31:08
-Ilca 6,Ilca 6,214400,John Barnard,3.0,Points Races club sailing,Race 65,2026-10-24T13:56:47.521544,2026-10-24T14:47:23.614895,50:36.1,2,14:13:19; 14:31:16
-Ilca 7,Ilca 7,150024,Nigel Ball,5.0,Points Races club sailing,Race 65,2026-10-24T13:56:47.522674,2026-10-24T14:48:49.803200,52:02.3,2,14:13:36; 14:31:14
-Ilca 7,Ilca 7,181811,Jake Millar,1.0,Points Races club sailing,Race 65,2026-10-24T13:56:47.522674,2026-10-24T14:45:25.246922,48:37.7,2,14:11:18; 14:28:53
-3.7,3.7,382,Lucia Chagas,4.0,Points Races club sailing,Race 65,2026-10-24T13:59:47.839333,2026-10-24T14:48:38.614696,48:50.8,2,14:16:05; 14:32:35
-Zephyr,Zephyr,28,Bob Hutchinson,4.0,Points Races club sailing,Race 65,2026-10-24T13:59:47.822398,,,2,14:21:09; 14:40:36
-Optimist,Optimist,4474,Benjamin Dawson,5.0,Points Races club sailing,Race 65,2026-10-24T14:02:47.473195,,,0,
-P Class,P Class,P-156,Scott Dawson,5.0,Points Races club sailing,Race 65,2026-10-24T14:02:47.472820,2026-10-24T14:46:10.014031,43:22.5,1,14:30:59
-Starling,Starling,2021,Melissa Dentice,5.0,Points Races club sailing,Race 65,2026-10-24T14:02:47.471621,2026-10-24T14:47:04.651488,44:17.2,1,14:25:56
-Starling,Starling,607,Jessica Dentice,8.0,Points Races club sailing,Race 65,2026-10-24T14:02:47.471621,2026-10-24T14:55:26.550749,52:39.1,1,14:32:38
-Starling,Starling,862,Zoe Moran,6.0,Points Races club sailing,Race 65,2026-10-24T14:02:47.471621,2026-10-24T14:49:28.160589,46:40.7,1,14:28:36
+Europe,Europe,KZ-29,Gabrielle Marais,1.0,Points Races club sailing,Race 1,2026-10-24T13:59:47.826004,2026-10-24T14:53:49.594642,54:01.8,1,14:21:29
+Ilca 6,Ilca 6,187898,Lucy Millar,5.0,Points Races club sailing,Race 1,2026-10-24T13:56:47.521544,2026-10-24T14:46:57.674984,50:10.2,2,14:12:35; 14:31:21
+Ilca 6,Ilca 6,210823,Werner Hennig,4.0,Points Races club sailing,Race 1,2026-10-24T13:56:47.521544,2026-10-24T14:45:38.397629,48:50.9,2,14:11:35; 14:28:59
+Ilca 6,Ilca 6,211516,Rose Jackson Liew,9.0,Points Races club sailing,Race 1,2026-10-24T13:56:47.521544,2026-10-24T14:47:39.112700,50:51.6,2,14:13:10; 14:31:08
+Ilca 6,Ilca 6,214400,John Barnard,3.0,Points Races club sailing,Race 1,2026-10-24T13:56:47.521544,2026-10-24T14:47:23.614895,50:36.1,2,14:13:19; 14:31:16
+Ilca 7,Ilca 7,150024,Nigel Ball,5.0,Points Races club sailing,Race 1,2026-10-24T13:56:47.522674,2026-10-24T14:48:49.803200,52:02.3,2,14:13:36; 14:31:14
+Ilca 7,Ilca 7,181811,Jake Millar,1.0,Points Races club sailing,Race 1,2026-10-24T13:56:47.522674,2026-10-24T14:45:25.246922,48:37.7,2,14:11:18; 14:28:53
+3.7,3.7,382,Lucia Chagas,4.0,Points Races club sailing,Race 1,2026-10-24T13:59:47.839333,2026-10-24T14:48:38.614696,48:50.8,2,14:16:05; 14:32:35
+Zephyr,Zephyr,28,Bob Hutchinson,4.0,Points Races club sailing,Race 1,2026-10-24T13:59:47.822398,,,2,14:21:09; 14:40:36
+Optimist,Optimist,4474,Benjamin Dawson,5.0,Points Races club sailing,Race 1,2026-10-24T14:02:47.473195,,,0,
+P Class,P Class,P-156,Scott Dawson,5.0,Points Races club sailing,Race 1,2026-10-24T14:02:47.472820,2026-10-24T14:46:10.014031,43:22.5,1,14:30:59
+Starling,Starling,2021,Melissa Dentice,5.0,Points Races club sailing,Race 1,2026-10-24T14:02:47.471621,2026-10-24T14:47:04.651488,44:17.2,1,14:25:56
+Starling,Starling,607,Jessica Dentice,8.0,Points Races club sailing,Race 1,2026-10-24T14:02:47.471621,2026-10-24T14:55:26.550749,52:39.1,1,14:32:38
+Starling,Starling,862,Zoe Moran,6.0,Points Races club sailing,Race 1,2026-10-24T14:02:47.471621,2026-10-24T14:49:28.160589,46:40.7,1,14:28:36

@@ -1,14 +1,16 @@
-"""Verify the export naming fix (bug 29 + multi-race filenames).
+"""Verify the export naming fix (bug 29 + series race numbering).
 
 The Sailwave CSV export names the file by the series matched from the HYC
-race calendar and fills the Series column. Two gaps found after the
+race calendar and fills the Series column. Gaps found after the
 24 Oct Dell results:
 - the Dell had no calendar in its Sailwave folder, so every export silently
   fell back to race_<id>_results.csv with an empty Series column (the
   calendar now also ships in the app folder as a fallback);
-- on multi-race days the series+date filename collided - the three Saturday
-  races would overwrite each other. Races after the first now append their
-  race-of-day number (R2, R3...).
+- the Race column used the DB race id, but Sailwave needs the race number
+  WITHIN the series, incremental across the whole season (Twilight Series
+  runs R1, R2, ... every Wednesday over the weeks), not per day and not the
+  DB id. The filename R-suffix uses the same series race number, so the
+  day's races never overwrite each other either.
 """
 import os
 import re
@@ -25,6 +27,12 @@ sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
 SCRATCH = 'tempref/score_b29.db'
+WEEKDAYS = ['Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat', 'Sun']
+MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+
+def cal_text(d):
+    return f'{WEEKDAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]} {str(d.year)[2:]}'
 
 
 def build_xlsx(path, rows):
@@ -78,15 +86,16 @@ def build_xlsx(path, rows):
 
 shutil.copy('score.db', SCRATCH)
 now = datetime.now()
+week_ago = now - timedelta(days=7)
 
-# Fixture calendar: racing TODAY (so the calendar match must succeed) and an
-# event far in the past for the fallback case
+# Fixture calendar: the SAME series races last week AND today (cross-week
+# incremental numbering, like Twilight every Wednesday); two days ago has no
+# event (fallback path)
 tempdir = tempfile.mkdtemp(prefix='b29cal_')
 cal = os.path.join(tempdir, 'HYC Calendar fixture.xlsx')
-today_text = f'{["Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun"][now.weekday()]} {now.day} ' \
-    f'{["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][now.month - 1]} {str(now.year)[2:]}'
 build_xlsx(cal, [
-    (today_text, 0.75, 'Test Series club racing'),
+    (cal_text(week_ago.date()), 0.75, 'Test Series club racing'),
+    (cal_text(now.date()), 0.75, 'Test Series club racing'),
     ('Sat 3 Jan 26', 0.75, 'Old Series club racing'),
 ])
 
@@ -98,11 +107,11 @@ ilca6_id = conn.execute(
 ilca6_uid = conn.execute(
     'SELECT uid FROM sailors WHERE class_id = ? LIMIT 1', (ilca6_id,)).fetchone()[0]
 
-# Three races today (multi-race day) + one on the old calendar date
+# 1 race last week, 3 races today, 1 race two days ago (no calendar event)
 race_ids = {}
-for days_ago, n in ((0, 3), (2, 1)):
+for days_ago, n in ((7, 1), (0, 3), (2, 1)):
     start = (now - timedelta(days=days_ago)).isoformat()
-    for i in range(n):
+    for _ in range(n):
         conn.execute("INSERT INTO races (status) VALUES ('ENDED')")
         rid = conn.execute("SELECT MAX(race_id) FROM races").fetchone()[0]
         conn.execute("INSERT INTO race_class_starts (race_id, class_id, start_time, source, sequence_number) "
@@ -127,32 +136,38 @@ def export(rid):
     assert resp.status_code == 200, resp.get_data(as_text=True)
     disp = resp.headers.get('Content-Disposition', '')
     fname = re.search(r'filename=([^;]+)', disp).group(1).strip()
-    return fname, resp.get_data(as_text=True)
+    body = resp.get_data(as_text=True)
+    race_cell = body.splitlines()[1].split(',')[6]
+    return fname, race_cell, body
 
 
-today = race_ids[0]
-old = race_ids[2][0]
+week_race = race_ids[7][0]
+today_races = race_ids[0]
+no_event_race = race_ids[2][0]
 
-# Race 1 of the day: series + date, no suffix
-fname, body = export(today[0])
-assert fname == f'Test Series club racing {now.strftime("%d-%m-%Y")}.csv', fname
-assert 'Test Series club racing' in body.splitlines()[1], 'Series column not filled'
-print(f'race 1 of day -> {fname} (Series column filled)')
+# Last week's race: first of the series -> R1, no filename suffix
+fname, race_cell, _ = export(week_race)
+assert fname == f'Test Series club racing {week_ago.strftime("%d-%m-%Y")}.csv', fname
+assert race_cell == 'Race 1', race_cell
+print(f'series R1 (last week)  -> {fname} | Race column: {race_cell}')
 
-# Races 2 and 3 of the day: R2 / R3 suffix so they cannot overwrite race 1
-fname2, _ = export(today[1])
-fname3, _ = export(today[2])
-assert fname2 == f'Test Series club racing R2 {now.strftime("%d-%m-%Y")}.csv', fname2
-assert fname3 == f'Test Series club racing R3 {now.strftime("%d-%m-%Y")}.csv', fname3
-print(f'race 2 of day -> {fname2}')
-print(f'race 3 of day -> {fname3}')
+# Today's races: R2, R3, R4 of the series - incremental across the weeks
+for expect, rid in zip((2, 3, 4), today_races):
+    fname, race_cell, body = export(rid)
+    assert fname == f'Test Series club racing R{expect} {now.strftime("%d-%m-%Y")}.csv', fname
+    assert race_cell == f'Race {expect}', race_cell
+    if expect == 2:
+        assert 'Test Series club racing' in body.splitlines()[1], 'Series column not filled'
+    print(f'series R{expect} (today)  -> {fname} | Race column: {race_cell}')
 
-# Date with no racing event in the calendar: fallback filename, empty Series
-fname, body = export(old)
-assert fname == f'race_{old}_results.csv', fname
+# Date with no racing event in the calendar: fallback filename, empty Series,
+# Race column falls back to the race-of-day number
+fname, race_cell, body = export(no_event_race)
+assert fname == f'race_{no_event_race}_results.csv', fname
+assert race_cell == 'Race 1', race_cell
 row = body.splitlines()[1].split(',')
 assert row[5] == '', 'Series column should be empty without a calendar event'
-print(f'no calendar event -> {fname} (Series empty, as before)')
+print(f'no calendar event      -> {fname} | Race column: {race_cell} (Series empty, as before)')
 
 # Dell scenario: no calendar in the Sailwave folder -> app-folder fallback
 # (the calendar ships with the app now)
@@ -164,4 +179,5 @@ print('no Sailwave folder -> calendar found in the app folder (Dell scenario fix
 shutil.rmtree(tempdir)
 os.remove(SCRATCH)
 print()
-print('PASS bug 29: calendar fallback + series/date filename + R2/R3 multi-race suffix')
+print('PASS: series+date filename, incremental series race number (R1..R4 across weeks),'
+      ' empty-Series fallback, app-folder calendar fallback')
