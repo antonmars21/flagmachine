@@ -69,7 +69,10 @@ both races set to 1 (her real 2nd laps were never captured on the Windows
 machine - the Dell CSVs carry them: 14:42:19 in race 59, 15:45:33 in
 race 60 Dell ids).
 
- 30 station buttons + Race Officer button open NEW browser tabs/sessions == CODED 2026-10-27, awaiting human test
+ 30 station buttons + Race Officer button open NEW browser tabs/sessions == FIXED
+PASSED ✅ HUMAN TEST 2026-10-27 (Anton: "the station 1 and station 2 buttons
+work correctly" - no new tabs, same-tab round trip confirmed). The blank
+RO page seen during the same test is bug 31 (below), a different bug.
 RO report 2026-10-27 (was NOT previously logged in this tracker - recorded
 here now): the Finish Sheet 1 / Finish Sheet 2 buttons on the RO control
 page opened a NEW browser tab on every click, and going back via the Race
@@ -89,6 +92,32 @@ links, no stray target="_blank" anywhere else) PASS.
 Human test (Ctrl+F5 the RO page first - the HTML is cached): click
 Finish Sheet 1, then Race Officer Control, then Finish Sheet 2 - the
 whole round trip must happen in the SAME tab with no new tabs opening.
+
+ 31 RO page comes up EMPTY (no flags, no settings) after navigating back from a station == CODED 2026-10-27, awaiting human test
+RO report 2026-10-27 (found while human-testing bug 30): the Race Officer
+Control button navigates back correctly, but the RO page loads FRESH - all
+flags and settings are gone. Same on any refresh of the RO page. Root
+cause: the start sequence lives in app_state['sequence'] on the SERVER
+(the finish sheets keep their class columns from it), but the RO page only
+ever PUSHED its drags to the server - nothing rebuilt the grids from the
+server state, so every page load started blank.
+Fix: index.html now renders window.INITIAL_SEQUENCE from app_state;
+app.js restoreSequenceFromServer() rebuilds every grid + row (primary,
+secondary and tertiary flags, labels, minutes, grid numbers) on page load
+when the page's own sequence is empty. Runtime state (countdown position)
+is NOT restored - a reloaded page shows the sequence ready; the countdown
+itself runs in the RO tab that pressed Start, so keep the RO page on the
+RO screen while a countdown is running (as on the water anyway).
+Regression: scripts/test_ro_restore.py (sequence embedded with rows/
+flags/grids, [] embeds on fresh sessions, app.js rebuilds on load incl.
+2nd/3rd flag boxes) PASS; js balance check on app.js PASS; full suite
+PASS (test_export_naming + test_export_sailwave made hermetic - clear the
+race history in their scratch, because the live DB accumulates same-day
+test races and the series race number counts every started race).
+Human test (Ctrl+F5 the RO page first - HTML + JS are cached): build a
+sequence with 2 starts and a secondary flag, open Finish Sheet 1, click
+'Race Officer Control' - the sequence must still be there, flags and
+minutes included. F5 on the RO page must also keep it.
 
  29 Dell exports: no series name + filename not series/date == CODED 2026-10-27, awaiting human test
 The 24 Oct Dell CSVs came out as race_59/60/61_results.csv with an EMPTY

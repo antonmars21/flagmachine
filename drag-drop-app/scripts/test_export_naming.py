@@ -101,7 +101,12 @@ build_xlsx(cal, [
 
 conn = sqlite3.connect(SCRATCH)
 conn.execute('UPDATE sailors SET racing_today = 0')
-conn.execute("UPDATE races SET status = 'ENDED' WHERE status = 'RUNNING'")
+# Hermetic: the live score.db accumulates same-day races (e.g. human browser
+# tests) - the series race number counts every started race of the series,
+# so the fixture must start from an empty race history
+for table in ('capture_actions', 'lap_records', 'race_sailors',
+              'race_class_starts', 'race_open_starts', 'races'):
+    conn.execute(f'DELETE FROM {table}')
 ilca6_id = conn.execute(
     "SELECT class_id FROM boat_classes WHERE flag_image = 'ilca6.png'").fetchone()[0]
 ilca6_uid = conn.execute(

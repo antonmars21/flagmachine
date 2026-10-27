@@ -339,7 +339,53 @@ function setupDropZone(dropZone) {
     });
 }
 
+// Bug 31: the RO page came up EMPTY after navigating back from a finish
+// sheet (or refreshing) even though the server still holds the start
+// sequence - the finish sheets keep their columns from it. Rebuild every
+// grid and row from the server-rendered sequence so no flag or setting is
+// lost. Runtime fields (status, remaining seconds) are NOT restored: a
+// reloaded page shows the sequence ready; the countdown itself runs in the
+// RO tab that pressed Start.
+function restoreSequenceFromServer() {
+    const items = window.INITIAL_SEQUENCE || [];
+    if (!items.length || state.sequence.length) return;
+
+    let maxGrid = 1;
+    items.forEach(it => { maxGrid = Math.max(maxGrid, it.grid_index || 1); });
+    for (let g = 1; g <= maxGrid; g++) {
+        if (!document.getElementById('event-grid-' + g)) createGrid(g);
+    }
+
+    items.forEach(it => {
+        const gridIndex = it.grid_index || 1;
+        const zone = document.getElementById('drop-zone-' + gridIndex);
+        if (!zone) return;
+        const minutes = it.countdown_minutes || 1;
+        const row = createRow(it.id, { label: it.label, flag: it.flag_image, minutes }, gridIndex);
+        // Secondary + tertiary flags (up to 3 flags per start event)
+        [['secondary_flag_image', '.secondary-flag-box'],
+         ['tertiary_flag_image', '.tertiary-flag-box']].forEach(([field, sel]) => {
+            if (it[field]) {
+                const box = row.querySelector(sel);
+                if (box) box.innerHTML = `<img src="${flagUrl(it[field])}" alt="Flag" style="width: 40px; height: 35px; object-fit: contain;">`;
+            }
+        });
+        zone.appendChild(row);
+        state.sequence.push({
+            id: it.id, label: it.label, flag_image: it.flag_image,
+            secondary_flag_image: it.secondary_flag_image || null,
+            tertiary_flag_image: it.tertiary_flag_image || null,
+            countdown_minutes: minutes, status: 'PENDING',
+            grid_index: gridIndex, current_remaining_seconds: minutes * 60
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Bug 31: rebuild the start sequence the server still holds (navigating
+    // back from a station or refreshing must not lose the flags/settings)
+    restoreSequenceFromServer();
+
     // Add refresh button handler
     const refreshBtn = document.getElementById('btn-refresh-sailwave');
     if (refreshBtn) {

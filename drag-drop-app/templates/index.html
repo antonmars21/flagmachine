@@ -148,6 +148,11 @@
 
     <script>
         window.FLAG_URL_MAP = {{ flag_url_map | tojson }};
+        // Bug 31: the server holds the live start sequence (the finish
+        // sheets keep their columns from it) - render it into the page so
+        // the RO page rebuilds its grids after navigating to a station
+        // or refreshing, instead of coming up empty.
+        window.INITIAL_SEQUENCE = {{ state.sequence | tojson }};
     </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

@@ -29,6 +29,12 @@ app_module.DB_PATH = SCRATCH
 
 conn = sqlite3.connect(SCRATCH)
 c = conn.cursor()
+# Hermetic: clear the race history copied from the live DB - the Race column
+# carries the series race number, which counts every started race of the
+# series, so the fixture race must be the only one
+for table in ('capture_actions', 'lap_records', 'race_sailors',
+              'race_class_starts', 'race_open_starts', 'races'):
+    c.execute(f'DELETE FROM {table}')
 c.execute("INSERT INTO races (start_time, status) VALUES (?, 'RUNNING')",
           (datetime.now().isoformat(),))
 race_id = c.lastrowid
