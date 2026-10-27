@@ -69,6 +69,27 @@ both races set to 1 (her real 2nd laps were never captured on the Windows
 machine - the Dell CSVs carry them: 14:42:19 in race 59, 15:45:33 in
 race 60 Dell ids).
 
+ 30 station buttons + Race Officer button open NEW browser tabs/sessions == CODED 2026-10-27, awaiting human test
+RO report 2026-10-27 (was NOT previously logged in this tracker - recorded
+here now): the Finish Sheet 1 / Finish Sheet 2 buttons on the RO control
+page opened a NEW browser tab on every click, and going back via the Race
+Officer Control button landed in new blank sessions - multiple finish
+sheet sessions then fought over lap/finish captures (the station id lives
+per tab in sessionStorage, so each new tab is a fresh, blank session).
+Fix (templates/index.html): the station buttons no longer carry
+target="_blank" - they navigate THIS tab to /finishsheet?station=1|2. The
+finish sheets' 'Race Officer Control' button already navigated the same
+tab; now the round trip RO <-> stations stays in ONE tab per screen with
+no duplicate sessions. The Display Board link keeps its new-tab behaviour
+BY DESIGN (it runs on the separate outdoor screen - it is not navigation
+between work pages).
+Regression: scripts/test_navigation.py (station buttons same-tab on /,
+RO control same-tab on both finish sheets, display board has no work-page
+links, no stray target="_blank" anywhere else) PASS.
+Human test (Ctrl+F5 the RO page first - the HTML is cached): click
+Finish Sheet 1, then Race Officer Control, then Finish Sheet 2 - the
+whole round trip must happen in the SAME tab with no new tabs opening.
+
  29 Dell exports: no series name + filename not series/date == CODED 2026-10-27, awaiting human test
 The 24 Oct Dell CSVs came out as race_59/60/61_results.csv with an EMPTY
 Series column, while the same calendar matched fine on the Windows test
