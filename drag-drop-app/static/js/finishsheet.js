@@ -512,7 +512,13 @@ async function pollClassStarts() {
         if (data.status !== 'success') return;
         
         state.race_id = data.race_id;
-        state.race_active = !!data.race_id;
+        // Bug 35: race_id STAYS SET after End Race (only Reset clears it),
+        // so "race_id exists" kept the sheet frozen in mid-race mode after
+        // a race ended - registry ticks never loaded sailors into the start
+        // list. "Active" means a race is RUNNING: once it is ENDED the
+        // columns are live again (lap/finish inputs stay disabled while
+        // fm_status is ENDED, and Start Race stays locked until a reset).
+        state.race_active = !!data.race_id && !data.race_ended;
         state.race_ended = !!data.race_ended;
         // Bug 15: per-class elapsed clocks are computed from these
         state.class_start_times = data.class_start_times || {};
@@ -860,7 +866,7 @@ async function initRegistrySidebar() {
                 .then(res => {
                     if (res.ok) {
                         loadRegistryList();
-                        if (!state.race_active) loadAndRenderSailors();
+                        loadAndRenderSailors();
                         // Reapply filters after clearing registry
                         setTimeout(applyRegistryFilters, 100);
                     }
@@ -1025,8 +1031,10 @@ async function toggleRacingToday(uid, checked, row) {
         const data = await response.json();
         if (data.status === 'success') {
             row.classList.toggle('signed-on', checked);
-            // Refresh the dynamic columns since fleet selection changed
-            if (!state.race_active) loadAndRenderSailors();
+            // Bug 35: a tick is a deliberate sign-on action - the columns must
+            // refresh NOW, even mid-race (late sign-ons must be visible, bug 14)
+            // and after End Race (preparing the next race of the day).
+            loadAndRenderSailors();
             // Reapply filters to ensure row visibility is maintained
             applyRegistryFilters();
         }
@@ -1123,7 +1131,7 @@ function openEditSailorModal(sailor) {
             if (data.status === 'success') {
                 overlay.remove();
                 await loadRegistryList();
-                if (!state.race_active) loadAndRenderSailors();
+                loadAndRenderSailors();
             } else {
                 alert(data.message || 'Could not save changes.');
             }
@@ -1139,7 +1147,7 @@ function openEditSailorModal(sailor) {
             if (data.status === 'success') {
                 overlay.remove();
                 await loadRegistryList();
-                if (!state.race_active) loadAndRenderSailors();
+                loadAndRenderSailors();
             }
         } catch (error) {
             console.error("Error deleting sailor:", error);

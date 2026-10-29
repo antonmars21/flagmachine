@@ -83,6 +83,50 @@ was a finish-SHEET display behaviour, not an export corruption.
 
 33 - sailors no longer default to the open class if they dont get a flag set, I don't know how they get the right start time
 34 in racing wednesday, the ilca 4 sailors defaulted to open class even though they had sailors in ilca 4
+
+35 - the sailor registry does not load the sailors when they are ticked into the race start list == CODED 2026-10-29, awaiting human test
+RO report 2026-10-29 (after the app-window launch worked): ticking sailors in
+the Sailor Registry did not load them into the finish-sheet start list; the
+window eventually refreshed after 10+ seconds (or a restart). Investigation:
+the live server + API serve ticked sailors correctly in every state (verified
+against the live 22:08 server AND a scratch DB) - the freeze is client-side.
+Root cause: app_state['race_id'] STAYS SET after End Race (by design - only
+Reset clears it, so end-race/laps/CSV export keep targeting the ended race),
+and finishsheet.js computed `state.race_active = !!data.race_id`. After the
+first race of the day was ended, EVERY column refresh was gated behind
+`if (!state.race_active)`: the tick handler, the 3s background refresher,
+clear-registry and add/edit/delete sailor all froze - ticked sailors never
+loaded until a Reset, a sheet_version bump or a restart. The same gate also
+hid mid-race late sign-ons (bug 14 worked at the API level but the sheet
+never re-rendered).
+Fix (static/js/finishsheet.js):
+- race_active now means RUNNING: `!!data.race_id && !data.race_ended` - once
+  the race is ENDED the columns go live again. Bug 4 is intact: fm_status
+  ENDED still locks Start Race (fmEngaged) and lap/finish inputs stay
+  disabled until a Reset.
+- a tick / clear-registry / add / edit / delete is a DELIBERATE sign-on
+  action: loadAndRenderSailors() now runs unconditionally (mid-race late
+  sign-ons appear immediately, bug 14's visible half). Only the automatic
+  3s poller keeps its pre-race gate (no churn while a race runs).
+Regression: scripts/test_registry_refresh.py (pre-race tick served, race_id
+persists after End Race - the trap, tick after End Race served live as a
+late sign-on, reset-finish-sheet clears it, JS invariants: the race_ended
+guard on race_active, exactly ONE gated refresh left = the 3s poller,
+brace balance) PASS; full suite (19 scripts) PASS.
+Human test (Ctrl+F5 BOTH finish sheet windows first - the JS is cached):
+1. tick a sailor BEFORE any race -> they appear in their class column
+   immediately (well under 3s).
+2. start a race, end it, then tick a NEW sailor -> they must appear in the
+   start list immediately (previously this stayed frozen until a reset).
+3. mid-race, add a late sailor (Add Sailor form or tick) -> they must appear
+   in their class column while the race is still running.
+NOTE while investigating (data facts, not bugs): the tidied roster's Ilca 4
+and Europe sailors have class_id NULL because boat_classes has NO 'Ilca 4'
+or 'Europe' row (add-sailor links class by name and never creates the class
+row; the Sailwave import DOES create classes). They can only ever group into
+Open Category until those class rows exist (this is the data half of bugs
+33/34). ilca4.png exists in static/flags/classflags/, so adding an 'Ilca 4'
+class row pointing at it is all that is needed for a proper Ilca 4 column.
 =============================
 in progress
 
