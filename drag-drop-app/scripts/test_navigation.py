@@ -17,6 +17,7 @@ work-page navigation buttons are removed entirely:
 """
 import os
 import re
+import struct
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -84,6 +85,26 @@ for url in ('http://localhost:5000/"',
         f'START.bat must open {url} as an application window'
 assert '--app' in bat, 'START.bat must use --app (application windows, not browser tabs)'
 print('START.bat: opens RO control + both finish sheets + display board as app windows')
+
+# Single-instance guard: relaunching must never start a SECOND server. The
+# already-running check (urlopen) must appear BEFORE the server start line.
+guard_pos = bat.find('urllib.request.urlopen')
+start_pos = bat.find('cmd /k "cd /d')
+assert 0 < guard_pos < start_pos, \
+    'START.bat must check whether the app is already running BEFORE starting Flask'
+assert 'ALREADY RUNNING' in bat and 'goto SERVER_UP' in bat, \
+    'START.bat already-running path must reuse the server and open the windows'
+print('START.bat: single-instance guard - relaunch reuses the running server')
+
+# Desktop launcher: the shortcut script must exist and point at START.bat,
+# and the shortcut icon (app.ico) must be a valid PNG-in-ICO.
+assert os.path.exists('scripts/make_desktop_shortcut.bat'), \
+    'scripts/make_desktop_shortcut.bat missing (desktop launcher installer)'
+ico = open('static/icons/app.ico', 'rb').read()
+assert struct.unpack('<HHH', ico[:6]) == (0, 1, 1), 'app.ico header invalid'
+w, h, colors, r, planes, bits, size, off = struct.unpack('<BBBBHHII', ico[6:22])
+assert ico[off:off + 8] == b'\x89PNG\r\n\x1a\n', 'app.ico must contain a PNG entry'
+print('desktop launcher: shortcut installer + app.ico (PNG-in-ICO) valid')
 
 # Taskbar navigator (bug 32/34 follow-up): each window's favicon is its
 # taskbar/window icon, so all four pages must carry a DISTINCT icon link

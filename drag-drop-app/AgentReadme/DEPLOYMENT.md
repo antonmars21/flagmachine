@@ -18,8 +18,15 @@ pip install Flask
 ```
 
 ### 3. Launch the App
-**Option A — Batch file (easiest):**
-- Double-click `START.bat`
+**Desktop shortcut (easiest):** double-click **Flag Machine** on the desktop
+(created once by `scripts\make_desktop_shortcut.bat` - safe to run again).
+
+**Option A — Batch file:** double-click `START.bat`
+
+Only ONE server ever runs: if the app is already up, launching again (shortcut
+or START.bat) reuses the running server and just reopens the app windows -
+close any extra windows you do not need. The server keeps running in its
+"Flag Machine" command window; closing that window stops the app.
 
 **Option B — PowerShell:**
 - Right-click `START.ps1` → "Run with PowerShell"

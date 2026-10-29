@@ -77,6 +77,20 @@ def sector(cx, cy, rx_out, rx_in, ry_out, ry_in, a_start, a_end):
     return test
 
 
+def tri(p1, p2, p3):
+    """Filled triangle (pennant flags)."""
+    def side(x, y, ax, ay, bx, by):
+        return (x - bx) * (ay - by) - (ax - bx) * (y - by)
+    b1p, b2p, b3p = p1, p2, p3
+
+    def test(x, y):
+        b1 = side(x, y, *b1p, *b2p) < 0
+        b2 = side(x, y, *b2p, *b3p) < 0
+        b3 = side(x, y, *b3p, *b1p) < 0
+        return b1 == b2 == b3
+    return test
+
+
 # ---- glyphs (stroke width comes from the primitive radii) ----------------
 
 GLYPHS = {
@@ -96,6 +110,10 @@ GLYPHS = {
     # 'D' - stem + right-half-ring bowl
     'D': [capsule(34, 22, 34, 106, 10),
           hring(34, 64, 54, 38, 42, 26)],
+    # pennant flags on a pole - the LAUNCHER icon (app.ico, desktop shortcut)
+    'FLAG': [capsule(40, 24, 40, 104, 6),
+             tri((48, 26), (48, 62), (98, 44)),
+             tri((48, 70), (48, 104), (84, 87))],
 }
 
 ICONS = {
@@ -105,6 +123,10 @@ ICONS = {
     'icon_fs2':     ((96, 165, 250), (29, 78, 216), '2'),
     'icon_display': ((251, 146, 60), (194, 65, 12), 'D'),
 }
+
+# The launcher icon (desktop shortcut to START.bat): navy square, white
+# pennant flags - distinct from every window icon.
+APP_ICON = ((59, 130, 246), (30, 58, 138), 'FLAG')
 
 
 # ---- rasterizer -----------------------------------------------------------
@@ -161,8 +183,17 @@ def make_icon(top_rgb, bottom_rgb, glyph_key):
     return px
 
 
-def write_png(path, size, pixels):
-    """pixels: rows of (r, g, b, a) tuples."""
+def write_ico(path, png_bytes):
+    """Windows .ico containing one 128x128 PNG entry (PNG-in-ICO, supported
+    by every Windows since Vista). Used for the desktop shortcut icon."""
+    header = struct.pack('<HHH', 0, 1, 1)      # reserved, type=icon, count
+    entry = struct.pack('<BBBBHHII', SIZE, SIZE, 0, 0, 1, 32,
+                        len(png_bytes), 6 + 16)
+    with open(path, 'wb') as f:
+        f.write(header + entry + png_bytes)
+
+
+def png_bytes(size, pixels):
     raw = b''.join(
         b'\x00' + b''.join(struct.pack('BBBB', *p) for p in row)
         for row in pixels
@@ -172,14 +203,15 @@ def write_png(path, size, pixels):
         body = tag + data
         return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body))
 
-    png = (
-        b'\x89PNG\r\n\x1a\n'
-        + chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0))
-        + chunk(b'IDAT', zlib.compress(raw, 9))
-        + chunk(b'IEND', b'')
-    )
+    return (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(raw, 9))
+            + chunk(b'IEND', b''))
+
+
+def write_png(path, size, pixels):
     with open(path, 'wb') as f:
-        f.write(png)
+        f.write(png_bytes(size, pixels))
 
 
 def preview(pixels):
@@ -204,6 +236,14 @@ def main():
         path = os.path.join(OUT_DIR, name + '.png')
         write_png(path, SIZE, pixels)
         print(f'wrote {path} ({SIZE}x{SIZE} RGBA, glyph {glyph!r})')
+    # launcher icon for the desktop shortcut (app.ico)
+    top, bottom, glyph = APP_ICON
+    pixels = make_icon(top, bottom, glyph)
+    if preview_mode:
+        print(f'== app.ico ({glyph}) ==')
+        preview(pixels)
+    write_ico(os.path.join(OUT_DIR, 'app.ico'), png_bytes(SIZE, pixels))
+    print(f'wrote {os.path.join(OUT_DIR, "app.ico")} (PNG-in-ICO, glyph {glyph!r})')
 
 
 if __name__ == '__main__':

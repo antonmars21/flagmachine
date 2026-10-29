@@ -54,6 +54,16 @@ echo Starting app...
 echo ========================================
 echo.
 
+REM SINGLE-INSTANCE GUARD: only ONE Flask server may run at a time.
+REM If the app already answers on port 5000, do NOT start a second one -
+REM just reopen the app windows (restores a window that was closed).
+"%PYTHON%" -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=2)" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo The app is ALREADY RUNNING - reusing the existing server.
+    echo Reopening the app windows - close any extra ones you do not need.
+    goto SERVER_UP
+)
+
 start "Flag Machine - http://localhost:5000" cmd /k "cd /d %APP_DIR% && %PYTHON% app.py"
 
 echo Waiting for the app to come up...

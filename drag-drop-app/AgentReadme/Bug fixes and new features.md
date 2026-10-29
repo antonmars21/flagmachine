@@ -145,6 +145,32 @@ defaults to station 1 (first-3 rule) - use the station toggle on its header
 if station 2 should score it. On the Dell: next START.bat run performs the
 same repair automatically.
 
+DESKTOP LAUNCHER + SINGLE-INSTANCE GUARD == CODED 2026-10-29, awaiting human test
+RO request: a desktop shortcut to launch the app, and relaunching must never
+leave more than one localhost (Flask server) running.
+- START.bat now checks whether http://localhost:5000 already answers BEFORE
+  starting anything: if it does, NO second server is started - the batch says
+  "ALREADY RUNNING", reuses the existing server and just reopens the four app
+  windows (this is also how a closed window gets restored). A fresh launch
+  (server down) starts Flask as before and waits for it to answer.
+- New desktop shortcut "Flag Machine" (created on this machine's desktop
+  2026-10-29): points at START.bat, working dir = the app folder, icon =
+  static/icons/app.ico. The icon is a NEW pennant-flag glyph (navy square,
+  two white pennants on a pole) drawn by the same vector rasterizer in
+  make_window_icons.py, wrapped as PNG-in-ICO (no new dependency).
+- scripts/make_desktop_shortcut.bat creates/updates the shortcut for the
+  CURRENT user, always pointing at the START.bat next to its own folder -
+  run it once on the club laptop / the Dell to install the shortcut there.
+Regression: scripts/test_navigation.py extended (the already-running check
+must precede the Flask start line; the ALREADY RUNNING path reuses the
+server; shortcut installer exists; app.ico is a valid PNG-in-ICO) PASS; full
+suite (20 scripts) PASS.
+Human test: double-click the desktop "Flag Machine" shortcut -> server +
+four windows come up. Double-click it AGAIN while the app is running -> NO
+second server window appears (the Flask command window count stays 1); the
+app windows reopen - close extras. Close one app window, relaunch the
+shortcut -> the window is restored against the SAME running server.
+
 35 - the sailor registry does not load the sailors when they are ticked into the race start list == FIXED
 PASSED ✅ HUMAN TEST 2026-10-29 (Anton: "the loading sailors is working").
 RO report 2026-10-29 (after the app-window launch worked): ticking sailors in
