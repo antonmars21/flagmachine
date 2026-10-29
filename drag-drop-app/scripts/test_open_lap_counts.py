@@ -24,11 +24,16 @@ shutil.copy('score.db', SCRATCH)
 
 conn = sqlite3.connect(SCRATCH)
 conn.execute('UPDATE sailors SET racing_today = 0')
-# An open-category sailor: class_id NULL (class has no flag in the sequence)
-open_uid = conn.execute(
-    'SELECT uid FROM sailors WHERE class_id IS NULL LIMIT 1').fetchone()
-assert open_uid, 'scratch DB has no open-category sailor (class_id NULL)'
-open_uid = open_uid[0]
+# Hermetic open-category fixture (post bugs-33/34 repair): the repair links
+# every sailor with a NAMED class to a boat_classes row, so a guaranteed
+# open-category sailor is a CLASSLESS one (empty boat_class - the repair
+# leaves those alone, and no flag can ever match an unnamed class).
+conn.execute("""INSERT OR REPLACE INTO sailors
+               (uid, sailor_name, short_name, sail_no, boat_class, handicap,
+                seed, class_id, racing_today, status)
+               VALUES ('SL-OPEN28', 'Open Test', 'OpenT', 'OP28', '', 1.0, 0,
+                       NULL, 0, 'racing')""")
+open_uid = 'SL-OPEN28'
 # A sequenced class sailor for the start
 ilca6_id = conn.execute(
     "SELECT class_id FROM boat_classes WHERE flag_image = 'ilca6.png'").fetchone()[0]

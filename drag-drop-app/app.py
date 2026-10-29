@@ -574,7 +574,86 @@ def reconcile_class_flag_images():
     if fixed:
         print(f"[flags] Repaired flag images for {fixed} class(es)")
 
+
+def find_class_flag_image(class_name):
+    """Best-match CLASS flag image for a class name, or None. Only the class
+    flag folder is considered (signal flags can never attach to a boat
+    class), and openclass.png can never be a boat class flag - Open Category
+    is a virtual column, not a class."""
+    files = _scan_flag_folders().get('class', [])
+
+    def norm(s):
+        return re.sub(r'[^a-z0-9]', '', s.lower())
+
+    files_by_norm = {norm(os.path.splitext(f)[0]): f for f in files}
+    key = norm(class_name)
+    match = files_by_norm.get(key) or FLAG_NAME_ALIASES.get(key)
+    if match and norm(os.path.splitext(match)[0]) == 'openclass':
+        return None
+    return match
+
+
+def ensure_boat_class_id(c, class_name):
+    """Look up a boat class by name (case-insensitive) on an open cursor,
+    creating it when missing (with its class flag when one exists on disk).
+    add/edit-sailor use this so a manually added class never strands its
+    sailors in Open Category (bugs 33/34: 'Ilca 4' sailors had class_id NULL
+    because no boat_classes row existed)."""
+    class_name = (class_name or '').strip()
+    if not class_name:
+        return None
+    row = c.execute('SELECT class_id FROM boat_classes WHERE LOWER(class_name) = LOWER(?)',
+                    (class_name,)).fetchone()
+    if row:
+        return row['class_id']
+    flag_image = find_class_flag_image(class_name)
+    c.execute('INSERT INTO boat_classes (class_name, flag_image, color_hex) VALUES (?, ?, ?)',
+              (class_name, flag_image, '#0369a1'))
+    print(f"[classes] created '{class_name}' (flag: {flag_image or 'none'})")
+    return c.lastrowid
+
+
+def repair_missing_boat_classes():
+    """Create boat_classes rows for sailor boat_class values that have none
+    (bugs 33/34). Manually added sailors (add/edit sailor on the sheet) and
+    tidied rosters can reference classes that were never created, so the RO
+    can drag the class flag (e.g. ilca4.png) into a start event and it
+    matches NO class - no column is created and the sailors' class_id stays
+    NULL, grouping them into Open Category. Every distinct sailor boat_class
+    gets a class row (flag image auto-matched from the class flag folder)
+    and the sailors are linked to it. Classes with no flag image keep their
+    sailors in Open Category, which is correct: no flag = no start."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT boat_class FROM sailors "
+              "WHERE boat_class IS NOT NULL AND TRIM(boat_class) <> ''")
+    names = [r['boat_class'].strip() for r in c.fetchall()]
+    created = 0
+    linked = 0
+    for name in names:
+        row = c.execute('SELECT class_id FROM boat_classes WHERE LOWER(class_name) = LOWER(?)',
+                        (name,)).fetchone()
+        if row:
+            class_id = row['class_id']
+        else:
+            flag_image = find_class_flag_image(name)
+            c.execute('INSERT INTO boat_classes (class_name, flag_image, color_hex) '
+                      'VALUES (?, ?, ?)', (name, flag_image, '#0369a1'))
+            class_id = c.lastrowid
+            created += 1
+            print(f"[classes] created '{name}' (flag: {flag_image or 'none'})")
+        linked += c.execute(
+            'UPDATE sailors SET class_id = ? '
+            'WHERE class_id IS NULL AND LOWER(boat_class) = LOWER(?)',
+            (class_id, name)).rowcount
+    conn.commit()
+    conn.close()
+    if created or linked:
+        print(f"[classes] repair: {created} class(es) created, {linked} sailor(s) linked")
+
+
 reconcile_class_flag_images()
+repair_missing_boat_classes()
 
 def get_dynamic_asset_library():
     """Flag library for the RO picker: CLASS FLAGS first, then SIGNAL FLAGS,
@@ -1324,10 +1403,11 @@ def add_sailor():
             n += 1
     
     try:
-        c.execute('SELECT class_id FROM boat_classes WHERE LOWER(class_name) = LOWER(?)', (boat_class,))
-        class_row = c.fetchone()
-        class_id = class_row['class_id'] if class_row else None
-        
+        # Get-or-create the class (bugs 33/34): a class typed here that does
+        # not exist yet is created immediately with its class flag, so the
+        # sailor can never be stranded classless in Open Category.
+        class_id = ensure_boat_class_id(c, boat_class) if boat_class else None
+
         c.execute('''
             INSERT INTO sailors (uid, sailor_name, short_name, sail_no, boat_class, handicap, seed, class_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1355,10 +1435,9 @@ def edit_sailor(uid):
     
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('SELECT class_id FROM boat_classes WHERE LOWER(class_name) = LOWER(?)', (boat_class,))
-    class_row = c.fetchone()
-    class_id = class_row['class_id'] if class_row else None
-    
+    # Get-or-create the class (bugs 33/34) - see add_sailor
+    class_id = ensure_boat_class_id(c, boat_class)
+
     c.execute('''
         UPDATE sailors
         SET sailor_name=?, short_name=?, sail_no=?, boat_class=?, handicap=?, seed=?, class_id=?

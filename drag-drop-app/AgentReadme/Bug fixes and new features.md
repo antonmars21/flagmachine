@@ -81,10 +81,55 @@ carries their own class and its start time (Ilca 4 sailors exported as
 Ilca 4, start 18:12) - the 'Ilca 4 defaulted to open class' report (below)
 was a finish-SHEET display behaviour, not an export corruption.
 
-33 - sailors no longer default to the open class if they dont get a flag set, I don't know how they get the right start time
-34 in racing wednesday, the ilca 4 sailors defaulted to open class even though they had sailors in ilca 4
+33 + 34 - Ilca 4 sailors load into Open Category despite the Ilca 4 flag in the start event box == CODED 2026-10-29, awaiting human test
+RO report 2026-10-29 (after bug 35 passed): "the loading sailors is working,
+Ilca 4 are still loading into open class despite having a flag in the start
+event box, visible left yellow flag". Root cause (the data half flagged in
+the bug 35 note): boat_classes had NO 'Ilca 4' row. Manually added sailors
+(add/edit sailor linked the class by NAME and never created the class row -
+only the Sailwave import did), so the Ilca 4 sailors had class_id NULL. The
+start sequence -> column lookup matches boat_classes BY FLAG IMAGE, so the
+dragged ilca4.png matched NOTHING: no Ilca 4 column was created and the
+sailors grouped into Open Category (this was also Wednesday's bug 34).
+Fix (app.py):
+- repair_missing_boat_classes() runs at startup next to
+  reconcile_class_flag_images(): every distinct sailors.boat_class without a
+  boat_classes row gets one (flag auto-matched from the class flag folder,
+  never openclass.png - Open Category is a virtual column), and NULL
+  sailors.class_id values are linked to it. Classes with no flag image
+  (Europe) keep their sailors in Open Category, which is correct: no
+  flag = no start.
+- ensure_boat_class_id(): add-sailor + edit-sailor now get-or-create the
+  class, so manual entries can never strand sailors again.
+- find_class_flag_image(): class flags only - signal flags can never attach
+  to a class; openclass.png can never be a class flag.
+LIVE DB HEALED 2026-10-29 (idempotent repair, verified before/after): new
+class rows 'Ilca 4' (class_id 14, ilca4.png) + 'Europe' (class_id 13, no
+flag image exists on disk); the 3 Ilca 4 sailors (Lucy SL-3, Rose SL-51360,
+Helen SL-0206424) are linked to Ilca 4. Gabrielle (Europe) stays Open
+Category until a Europe flag image is dropped into static/flags/classflags/.
+Verified on the live server: /api/sailors-for-onwater now returns a real
+'Ilca 4' column (flag ilca4.png) - no restart needed beyond the one the RO
+already did.
+Regression: scripts/test_class_repair.py (repair creates the Ilca 4 class
+with ilca4.png + links sailors; ilca4.png flag in the sequence -> Ilca 4
+COLUMN with its sailors; Europe stays Open; class-start fires for the
+created class; add-sailor creates a missing class; edit-sailor re-links;
+openclass.png never a class flag; P Class = pclass.png + signal flags
+clean; idempotent) PASS. test_open_lap_counts.py made hermetic (post-repair
+no named-class sailor stays class_id NULL, so it seeds a CLASSLESS sailor -
+empty boat_class - as its open-category fixture). Full suite (20 scripts)
+PASS.
+Human test (no restart needed - the classes are already in the live DB):
+drag the Ilca 4 flag into a start event -> the finish sheet must show an
+'Ilca 4' column (not Open Category) with the Ilca 4 sailors in it; tick a
+new Ilca 4 sailor -> they land in the Ilca 4 column. Note the Ilca 4 column
+defaults to station 1 (first-3 rule) - use the station toggle on its header
+if station 2 should score it. On the Dell: next START.bat run performs the
+same repair automatically.
 
-35 - the sailor registry does not load the sailors when they are ticked into the race start list == CODED 2026-10-29, awaiting human test
+35 - the sailor registry does not load the sailors when they are ticked into the race start list == FIXED
+PASSED ✅ HUMAN TEST 2026-10-29 (Anton: "the loading sailors is working").
 RO report 2026-10-29 (after the app-window launch worked): ticking sailors in
 the Sailor Registry did not load them into the finish-sheet start list; the
 window eventually refreshed after 10+ seconds (or a restart). Investigation:
