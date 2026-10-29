@@ -16,6 +16,15 @@ m.DB_PATH = SCRATCH
 m.recording_state['active'] = False
 client = m.app.test_client()
 
+# Hermetic: the live registry is user-managed (old sailors get tidied away),
+# so seed the sailors this test needs into the scratch copy
+import sqlite3
+from scripts.seed_test_sailors import seed_fixture_sailors
+conn = sqlite3.connect(SCRATCH)
+seed_fixture_sailors(conn)
+conn.commit()
+conn.close()
+
 # Sequence: Starling (grid 1) and Ilca 6 (grid 2) only.
 # Zephyr sailors are NOT in the sequence -> Open Category.
 client.post('/update-sequence', json={'sequence': [

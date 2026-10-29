@@ -85,4 +85,35 @@ for url in ('http://localhost:5000/"',
 assert '--app' in bat, 'START.bat must use --app (application windows, not browser tabs)'
 print('START.bat: opens RO control + both finish sheets + display board as app windows')
 
+# Taskbar navigator (bug 32/34 follow-up): each window's favicon is its
+# taskbar/window icon, so all four pages must carry a DISTINCT icon link
+# and the two finish sheets must differ by station.
+def favicon_of(html):
+    m = re.search(r'<link\s[^>]*rel="icon"[^>]*>', html, re.IGNORECASE)
+    assert m, 'page has no favicon link'
+    href = re.search(r'href="([^"]*)"', m.group(0))
+    assert href, f'favicon link has no href: {m.group(0)}'
+    return href.group(1)
+
+ro_html = client.get('/').get_data(as_text=True)
+icons = {'/': favicon_of(ro_html)}
+for station in (1, 2):
+    html = client.get(f'/finishsheet?station={station}').get_data(as_text=True)
+    icons[f'/finishsheet?station={station}'] = favicon_of(html)
+icons['/display'] = favicon_of(client.get('/display').get_data(as_text=True))
+assert len(set(icons.values())) == 4, \
+    f'all four windows need DISTINCT taskbar icons, got {icons}'
+print('window icons distinct per page:', icons)
+
+# every referenced icon must be a real, served PNG
+for href in icons.values():
+    filename = href.rsplit('/', 1)[-1]
+    path = os.path.join('static', 'icons', filename)
+    assert os.path.exists(path), f'icon file missing: {path}'
+    with open(path, 'rb') as f:
+        assert f.read(8) == b'\x89PNG\r\n\x1a\n', f'not a PNG: {path}'
+    resp = client.get(href if href.startswith('/') else '/' + href)
+    assert resp.status_code == 200, f'{href} does not serve (HTTP {resp.status_code})'
+print('all four icon PNGs exist and serve over HTTP')
+
 print('ALL NAVIGATION CHECKS PASS')

@@ -29,6 +29,10 @@ app_module.DB_PATH = SCRATCH
 
 conn = sqlite3.connect(SCRATCH)
 c = conn.cursor()
+# Hermetic: the live registry is user-managed (old sailors get tidied away),
+# so seed the sailors this test needs into the scratch copy
+from scripts.seed_test_sailors import seed_fixture_sailors
+seed_fixture_sailors(conn)
 # Hermetic: clear the race history copied from the live DB - the Race column
 # carries the series race number, which counts every started race of the
 # series, so the fixture race must be the only one

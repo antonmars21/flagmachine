@@ -23,6 +23,10 @@ test_uids = ['SL-1091', 'SL-955',          # Starling
              'SL-12',                     # Zephyr
              'SL-141']                    # Frostbite
 conn = sqlite3.connect('tempref/score_test.db')
+# Hermetic: the live registry is user-managed (old sailors get tidied away),
+# so seed the sailors this test needs into the scratch copy
+from scripts.seed_test_sailors import seed_fixture_sailors
+seed_fixture_sailors(conn)
 c = conn.cursor()
 c.execute('UPDATE sailors SET racing_today = 0')
 for uid in test_uids:
