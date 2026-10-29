@@ -12,21 +12,26 @@ anywhere else; this file is the stable summary only.
 
 | File | Contents |
 |---|---|
-| `AgentReadme/Bug fixes and new features.md` | Bug tracker (resolved / in progress / active) + new feature list. Single source of truth for bug status |
+| `FlagMachine.kanban.md` (repo root, GIT-IGNORED - local) | Live task board (Triage / Confirmed / In Progress / Verify / Closed). Single source of truth for OPEN work. Open with the MD Kanban VS Code extension |
+| `AgentReadme/Bug fixes and new features.md` | CHANGELOG: full fix history (root cause, fix, regression, human-test evidence). Closed items only |
+| `AgentReadme/CURRENT_STATE.md` | v0.99 snapshot: DB tables, endpoint list, runtime shape, data state |
 | `AgentReadme/Architecture.md` | System architecture, key files, API routes |
-| `AgentReadme/CURRENT_STATE.md` | DB tables, endpoint list, current system state |
 | `AgentReadme/Requirements.md` | Functional requirements for Flag Machine + Finish Sheet |
 | `AgentReadme/DEPLOYMENT.md` | Deployment on the club laptop |
 
 ## Process rules (agreed with the RO, 2026-10-15)
 
-1. A bug only moves to resolved after a confirmed HUMAN browser test. Passing regression
-   scripts alone is not enough. Regression scripts run against the API and cannot catch
-   frontend bugs.
+1. A bug only moves to resolved (kanban: Closed) after a confirmed HUMAN browser
+   test. Passing regression scripts alone is not enough. Regression scripts run
+   against the API and cannot catch frontend bugs.
 2. Human tests must hard-refresh first (Ctrl+F5) — the JS is cached.
-3. After any fix, update the bug tracker entry in
-   `AgentReadme/Bug fixes and new features.md` and run the relevant regression script in
-   `scripts/`.
+3. After any fix: move the kanban card (In Progress -> Verify -> Closed), add a
+   short changelog entry in `AgentReadme/Bug fixes and new features.md`, and run
+   the relevant regression script in `scripts/`. Every fix ships with a
+   regression script or a record/replay reproduction.
+4. New work = a new kanban card in Triage (confirm it before pulling it into
+   Confirmed). Never reopen a Closed card — file a new one that references the
+   old.
 
 ## Users and UI philosophy
 
