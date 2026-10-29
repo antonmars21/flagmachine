@@ -49,11 +49,9 @@
         <button id="btn-mode-number" class="btn btn-mode">#️⃣ Timer</button>
         <span style="flex: 1;"></span>
         <a class="btn btn-displayboard" href="/display" target="_blank" title="Open the outdoor display board">🖥 Display Board</a>
-        <!-- Bug 30: station buttons navigate THIS tab (target="_blank" spawned a
-             new browser tab every click - a fresh, blank finish-sheet session that
-             fought the real stations over captures). One button, one destination. -->
-        <a class="btn btn-finishsheet" href="/finishsheet?station=1">📊 Finish Sheet 1</a>
-        <a class="btn btn-finishsheet" href="/finishsheet?station=2">📊 Finish Sheet 2</a>
+        <!-- Bug 32/34: no station buttons here any more - START.bat opens the
+             finish sheets in their own application windows, so the RO control
+             window (and its countdown/horn/voice) can never be navigated away. -->
     </div>
 
     <main class="workspace-container">

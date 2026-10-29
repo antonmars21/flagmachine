@@ -32,8 +32,12 @@ python app.py
 (Run in a single Command Prompt window)
 
 ### 4. Open in Browser
-- **Flag Machine:** http://localhost:5000
-- **Finish Sheet:** http://localhost:5000/finishsheet
+START.bat does this for you: once the app answers, it opens each page in its
+own Chrome/Edge application window (--app mode, no tabs/navigation buttons):
+- **Race Officer Control:** http://localhost:5000
+- **Finish Sheet 1:** http://localhost:5000/finishsheet?station=1
+- **Finish Sheet 2:** http://localhost:5000/finishsheet?station=2
+- **Display Board:** http://localhost:5000/display
 
 ---
 

@@ -6,8 +6,52 @@ test. Passing regression scripts alone is not enough.
 **Bugs
 
 
-32 - the navigation from RO control to station closes RO control tab. notign complexity, 1) coild we open in application window not browsers? - conside no navigation bi=uttons, the tabs are opened when start.bat less options for user
+32 + 34 (navigation) - RO to station navigation closes the RO control == CODED 2026-10-29, awaiting human test
+RO report 2026-10-28: navigating from RO control to a finish station (and
+the RO-to-stations button generally) replaced the RO page - the RO control
+window, with its countdown, horn and voice, was gone until the operator
+navigated back. Bug 31's resume made the DATA survive, but the RO screen
+itself must never move.
+Fix (the agreed direction from the bug 32 note): application windows, not
+browser tabs, and no navigation buttons at all:
+- START.bat now waits for the server to answer, then opens each page in its
+  OWN Chrome/Edge application window (--app mode: no tab bar, no
+  back/forward buttons): RO control (/), Finish Sheet 1
+  (/finishsheet?station=1), Finish Sheet 2 (/finishsheet?station=2) and the
+  Display Board (/display). Chrome is used if installed, otherwise Edge
+  (present on every Windows 10/11 machine).
+- The Finish Sheet 1/2 buttons are REMOVED from the RO page
+  (templates/index.html) and the 'Race Officer Control' back button is
+  REMOVED from both finish sheets (templates/finishsheet.html) - there is no
+  way left to navigate a work window onto another work page, so the RO
+  control cannot be closed by navigation. Each window is one purpose, one
+  session (station id in sessionStorage stays per window).
+- The Display Board link stays on the RO page (new tab BY DESIGN - separate
+  outdoor screen, and it does not navigate the RO window away).
+- START.ps1 left as-is (legacy launcher; START.bat is the documented path).
+Regression: scripts/test_navigation.py rewritten for the new design (RO page
+has no finish-sheet links, finish sheets have no work-page links or any
+target attribute, display board unchanged, START.bat must open all four
+pages as --app windows) PASS; full suite (18 scripts) PASS.
+Human test: double-click START.bat - after the app starts, FOUR separate
+application windows must open (RO control, Finish Sheet 1 with Station 1
+badge, Finish Sheet 2 with Station 2 badge, Display Board), each WITHOUT
+browser tabs or navigation buttons. The RO page must show no Finish Sheet
+buttons; the finish sheets must show no 'Race Officer Control' button; press
+F5 on the RO page mid-countdown - the clock must resume (bug 31 behaviour,
+unchanged).
 
+WED 28 OCT RESULTS EXPORTED 2026-10-29 (race 76, the day's single race,
+regenerated with the bug-29 naming): 'Sailing Results 28-10-26/Twilight
+Series club racing R3 28-10-2026.csv' - 15 sailors, 13 finishes, 2 P Class
+sailors without a finish (empty FinishTime for DNC/DNF coding), Series
+column + series race number R3 correct. NOTE: in this export every sailor
+carries their own class and its start time (Ilca 4 sailors exported as
+Ilca 4, start 18:12) - the 'Ilca 4 defaulted to open class' report (below)
+was a finish-SHEET display behaviour, not an export corruption.
+
+33 - sailors no longer default to the open class if they dont get a flag set, I don't know how they get the right start time
+34 in racing wednesday, the ilca 4 sailors defaulted to open class even though they had sailors in ilca 4
 =============================
 in progress
 

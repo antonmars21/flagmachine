@@ -1,22 +1,23 @@
-"""Verify the bug 30 fix: page navigation goes to exactly ONE destination -
-the current tab - so stations never spawn duplicate browser sessions.
+"""Verify the bug 32/34 fix: NO page-to-page navigation buttons at all.
 
-Bug 30 (RO report 2026-10-27): the Finish Sheet 1 / Finish Sheet 2 buttons on
-the RO control page used target="_blank", so every click opened a NEW browser
-tab - a fresh, blank finish-sheet session (the station id lives per tab in
-sessionStorage) that then fought the real stations over lap/finish captures.
-Combined with the finish sheet's Race Officer Control button, the RO kept
-landing in new sessions instead of returning to the one real control page.
+Bug 32 + 34 (RO report 2026-10-28): navigating from RO control to a finish
+station replaced the RO page (the bug-30 same-tab fix moved the RO window onto
+the station page, so the RO control - and its countdown, horn and voice -
+was gone until the operator navigated back). Bugs 31's resume made the data
+survive, but the RO screen still must not move.
 
-Rules now checked on every rendered page:
-- the station buttons (RO page) have NO target attribute -> same tab;
-- the Race Officer Control button (finish sheets) has NO target attribute;
-- the Display Board link is the ONLY allowed new-tab link (it exists to run
-  on the separate outdoor screen - it is not navigation between work pages).
+Fix (agreed direction): each page opens in its OWN application window via
+START.bat (Chrome/Edge --app mode: no tabs, no back/forward buttons), and the
+work-page navigation buttons are removed entirely:
+- RO page: no Finish Sheet 1/2 buttons (only the Display Board link, which
+  opens a new tab BY DESIGN for the separate outdoor screen);
+- finish sheets: no 'Race Officer Control' back button;
+- START.bat itself opens all four pages as separate app windows once the
+  server answers.
 """
+import os
 import re
 import sys
-import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -30,47 +31,40 @@ LINK_RE = re.compile(r'<a\s[^>]*>', re.IGNORECASE)
 
 
 def links(html):
-    return [m.group(0) for m in LINK_RE.finditer(html)]
+    return [t.group(0) for t in LINK_RE.finditer(html)]
 
 
-def check_page(path, allow_new_tabs):
-    resp = client.get(path)
-    assert resp.status_code == 200, f'{path} rendered {resp.status_code}'
-    html = resp.get_data(as_text=True)
-    bad = []
-    for tag in links(html):
-        href = re.search(r'href="([^"]*)"', tag)
-        if not href:
-            continue
-        if 'target="_blank"' in tag:
-            # new-tab links are only allowed on the allowlist (per page)
-            if href.group(1) not in allow_new_tabs:
-                bad.append(tag.strip())
-    assert not bad, f'{path}: navigation links must stay in the same tab: {bad}'
-    return html
+# RO control page: NO finish-sheet buttons any more - the RO window must never
+# navigate away. The Display Board link may stay (new tab, separate screen).
+resp = client.get('/')
+assert resp.status_code == 200, f'/ rendered {resp.status_code}'
+html = resp.get_data(as_text=True)
+assert '/finishsheet' not in html, \
+    'RO page still links to a finish sheet - the RO window can be navigated away'
+for tag in links(html):
+    href = re.search(r'href="([^"]*)"', tag)
+    if not href:
+        continue
+    if 'target="_blank"' in tag:
+        assert href.group(1) == '/display', \
+            f'RO page: unexpected new-tab link: {tag.strip()}'
+print('RO page: no station buttons - the RO window cannot navigate away')
 
-
-# RO control page: station buttons navigate THIS tab; Display Board may open
-# a new tab (separate outdoor screen - documented feature, not navigation)
-html = check_page('/', {'/display'})
-assert '/finishsheet?station=1' in html and '/finishsheet?station=2' in html
-station_links = [t for t in links(html) if 'finishsheet?station=' in t]
-assert len(station_links) == 2, f'expected the 2 station buttons, got {station_links}'
-for tag in station_links:
-    assert 'target=' not in tag, f'station button still opens a new tab: {tag.strip()}'
-print('RO page: Finish Sheet 1 + 2 buttons navigate this tab (no new-tab sessions)')
-
-# Both finish sheets: the Race Officer Control button navigates THIS tab back
-# to the control page - one destination, no extra sessions
+# Both finish sheets: no 'Race Officer Control' back button, no links to /
 for station in (1, 2):
-    html = check_page(f'/finishsheet?station={station}', set())
-    ro_links = [t for t in links(html) if re.search(r'href="/[^f]', t)]
-    assert ro_links, f'finish sheet {station}: Race Officer Control link missing'
-    for tag in ro_links:
-        assert 'target=' not in tag, f'RO control link opens a new tab: {tag.strip()}'
-    print(f'finish sheet {station}: Race Officer Control navigates this tab')
+    resp = client.get(f'/finishsheet?station={station}')
+    assert resp.status_code == 200, f'finish sheet {station} rendered {resp.status_code}'
+    html = resp.get_data(as_text=True)
+    work_links = [t.strip() for t in links(html)
+                  if re.search(r'href="/"\s', t) or 'finishsheet?station=' in t]
+    assert not work_links, \
+        f'finish sheet {station}: work-page navigation links must not exist: {work_links}'
+    for tag in links(html):
+        assert 'target=' not in tag, \
+            f'finish sheet {station}: new-tab link not allowed: {tag.strip()}'
+    print(f'finish sheet {station}: no work-page navigation links')
 
-# Display board: no work-page navigation at all (no links to / or /finishsheet)
+# Display board: no work-page navigation at all (unchanged)
 resp = client.get('/display')
 assert resp.status_code == 200
 html = resp.get_data(as_text=True)
@@ -78,5 +72,17 @@ assert '/finishsheet' not in html and not re.search(r'href="/"', html), \
     'display board must not link back to work pages'
 print('display board: no work-page navigation links')
 
-print()
-print('PASS bug 30: one button, one destination - station + RO navigation stay in the tab')
+# START.bat is now the navigation mechanism: it must open all four pages as
+# separate application windows (--app mode) after the server is up.
+with open('START.bat', encoding='utf-8', errors='replace') as f:
+    bat = f.read()
+for url in ('http://localhost:5000/"',
+            'http://localhost:5000/finishsheet?station=1',
+            'http://localhost:5000/finishsheet?station=2',
+            'http://localhost:5000/display'):
+    assert f'--app="{url}' in bat or f'--app={url}' in bat, \
+        f'START.bat must open {url} as an application window'
+assert '--app' in bat, 'START.bat must use --app (application windows, not browser tabs)'
+print('START.bat: opens RO control + both finish sheets + display board as app windows')
+
+print('ALL NAVIGATION CHECKS PASS')

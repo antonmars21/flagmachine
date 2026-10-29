@@ -56,13 +56,51 @@ echo.
 
 start "Flag Machine - http://localhost:5000" cmd /k "cd /d %APP_DIR% && %PYTHON% app.py"
 
+echo Waiting for the app to come up...
+
+REM Wait until the Flask server answers, then open the race-day windows
+set /a TRIES=0
+:WAIT_SERVER
+"%PYTHON%" -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=2)" >nul 2>&1
+if %errorlevel% equ 0 goto SERVER_UP
+set /a TRIES+=1
+if %TRIES% geq 30 (
+    echo WARNING: the app did not answer on http://localhost:5000 within 30 seconds.
+    echo Open the pages manually from the list below.
+    goto SHOW_URLS
+)
+timeout /t 1 /nobreak >nul
+goto WAIT_SERVER
+
+:SERVER_UP
+echo App is up - opening the race-day windows.
+
+REM Bug 32/34: every page opens in its OWN application window (--app mode:
+REM no browser tabs, no back/forward buttons, so the RO control window can
+REM never be navigated away or closed by mistake). Chrome if installed,
+REM otherwise Edge (present on every Windows 10/11 machine).
+set "BROWSER="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER set "BROWSER=msedge"
+
+start "" "%BROWSER%" --app="http://localhost:5000/"
+timeout /t 1 /nobreak >nul
+start "" "%BROWSER%" --app="http://localhost:5000/finishsheet?station=1"
+timeout /t 1 /nobreak >nul
+start "" "%BROWSER%" --app="http://localhost:5000/finishsheet?station=2"
+timeout /t 1 /nobreak >nul
+start "" "%BROWSER%" --app="http://localhost:5000/display"
+
+:SHOW_URLS
 echo.
 echo ========================================
-echo App started! Open your browser:
-echo.
-echo Flag Machine:    http://localhost:5000
-echo Finish Sheet:    http://localhost:5000/finishsheet
-echo Display Board:   http://localhost:5000/display
+echo Race Officer Control: http://localhost:5000
+echo Finish Sheet 1:        http://localhost:5000/finishsheet?station=1
+echo Finish Sheet 2:        http://localhost:5000/finishsheet?station=2
+echo Display Board:         http://localhost:5000/display
 echo.
 echo Close the Command Prompt window to stop the app.
 echo ========================================
