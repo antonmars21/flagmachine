@@ -1,1 +1,4 @@
 drag-drop-app/nul
+
+# LED vendor SDK (Huidu) — third-party, ~82MB, must never enter the repo
+LED/SDK/
