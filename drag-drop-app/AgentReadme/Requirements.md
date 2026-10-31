@@ -1,18 +1,19 @@
-# Requirements: Flag Machine + Finish Sheet v1.1
+# Requirements: Flag Machine + Finish Sheet v1.2
 
 ---
 
-## PART 1: FLAG MACHINE (Sessions 1–3 — Unchanged)
+## PART 1: FLAG MACHINE (Sessions 1–3 + Session 5 Enhancements)
 
 ### 1. Control Panel Interface
-- **Multi-grid support:** Define 2 boat classes (Event Grid 1, Event Grid 2) with separate sequences
+- **Multi-grid support:** Define N boat classes with separate sequences (unlimited dynamic creation via "+" button)
+- **Grid management:** Add/Remove start sequence grids with unique visual identification
 - **Flag library:** Drag-and-drop library of flag images (PNG/JPG from `/static/flags/`)
 - **Sequence builder:** Drag flags into grid to create event sequence
 - **Countdown settings:** Each row shows editable duration in whole minutes (min 1, default based on flag)
 - **Live countdown display:** Each row shows MM:SS format countdown (e.g., "00:45")
 - **Grid total countdown:** Display sum of all remaining rows per grid
 - **Row reordering:** Drag rows within same grid to reorder sequence
-- **Secondary flags:** Option to add a second flag per row (cosmetic only; doesn't affect timing)
+- **Secondary/tertiary flags:** Option to add a second and third flag per row. A class flag in ANY slot shares that row's start sequence - two or three classes can be in the same start sequence and start together when the event's last row completes; signal flags (P, D) are cosmetic only for timing.
 - **Remove rows:** Delete button to remove individual rows from sequence
 - **Race control buttons:** START (green), STOP (red), RESET (gray), END RACE (blue)
 
@@ -37,42 +38,58 @@
 
 ---
 
-## PART 2: FINISH SHEET v1.1 (Session 3 — BUILT ✓, Session 4 TESTING)
+## PART 2: FINISH SHEET v1.2 (Session 5 — COMPLETED ✓)
 
 ### Overview
 
 **Integrated into main app.py** (port 5000). Replaces Sailor Scorer v1.0 front-end. Allows dual operators to record lap counts and finish times for sailors on the water in real-time.
 
 **Served at:** `http://localhost:5000/finishsheet`
-**Database:** `score.db` (merged Session 2 + Session 3 schema)
+**Database:** `score.db` (merged Session 2 + Session 3 + Session 5 schema)
 **Backend:** app.py (Flask, port 5000, debug=True)
 
 ---
 
-### v1.1 Features
+### v1.2 Features (Session 5 Enhancements)
 
-#### 1. Four-Column Sailor Display
+#### 1. Dynamic Column Sailor Display
 
 **Layout:**
-- Column 1: Largest class (e.g., Ilca 6 — 14 sailors)
-- Column 2: Second class (e.g., Starling — 4 sailors)
-- Column 3: Third class (e.g., Optimist — 3 sailors)
-- Column 4: "Open" (remaining classes — 6 sailors: Ilca 7, P, Zephyr)
+- **Unlimited columns**: Automatically adapts to number of start sequences + classes
+- **Sequence-aware**: Columns grouped by start sequence (Start 1, Start 2, etc.)
+- **Empty columns**: Shows columns for classes in sequence even with zero sailors
+- **Open Category**: Trailing column for sailors with classes not in any sequence
 
-**Sailor grouping logic:**
-1. Query `/api/sailors-for-onwater` (when no active race, returns all 27 sailors)
-2. Group by boat_class
-3. Sort groups by count descending (largest first)
-4. Assign top 3 to Columns 1–3, remainder to "Open" (Column 4)
+**Sailor grouping logic (verified working, 2026-10-09):**
 
-**Sailors per class (Session 4 test data):**
-- Ilca 6: 14 sailors
-- Starling: 4 sailors
-- Optimist: 3 sailors
-- Ilca 7: 2 sailors
-- P: 1 sailor
-- Zephyr: 3 sailors
-- **Total: 27 sailors**
+Sources of truth:
+- Flag Machine start sequence: which classes start, and in what order (grid_index)
+- `boat_classes` table: maps class_id to a flag_image
+- `sailors` table: each sailor's `racing_today` flag and `class_id`
+
+Rules:
+1. Only sailors checked in the Sailor Registry (`racing_today = 1`) appear on the finish sheet.
+2. The countdown sequence may contain N separate starts with class flags. Each flag in the sequence is matched (case-insensitive) to a `boat_classes` row via `flag_image`, producing one column per class start.
+3. Sailors whose `class_id` matches a class in the current sequence land in that class's column, grouped by (class_id + sequence/grid index).
+4. Any sailor whose class is NOT in the current sequence — or who has no class or whose class has no flag — automatically lands in the trailing "Open Category" column.
+5. Columns sort by sequence number first, then sailor count descending. Classes in the sequence with zero signed-on sailors still show an empty column.
+6. Once a class has started, its roster locks to the sailors who were signed on at that class's start moment (`race_sailors`). Classes not yet started stay live, reflecting registry checkbox changes in real time.
+
+Data integrity (enforced automatically at every app startup):
+- `sailors.class_id` is re-synced to `boat_classes` by case-insensitive boat class name. Sailors whose class matches no boat class get `class_id = NULL` and therefore group into Open Category.
+- `boat_classes.flag_image` is re-scanned against the files in `/static/flags/`. Classes whose flag is NULL or missing on disk are matched to a flag file by normalized class name (e.g. "Ilca 7" → `ilca7.png`), or a documented alias ("3.7" → `farr3point7.png`). Classes with no matching flag image keep `flag_image = NULL` → their sailors group into Open Category.
+
+Sailor data source (Sailwave integration):
+- Sailors are imported via the "Import Sailwave sailors" button (identical on the RO page and
+  both finish sheets) from the Sailwave competitor list: `C:\Users\Public\Documents\Sailwave\Flagmachine_database\Boats_master.htm`
+  (the HTML export; table columns Fleet, Class, Boat, SailNo, HelmName, Handicap). `Boats_Master.xml`
+  remains supported as a fallback when no HTM export is present.
+- The XML `compclass` field (the division, e.g. "ILCA 6") determines a sailor's boat class. `compfleet` (coarse fleet, e.g. "ILCA") is ignored.
+- `short_name` is the helm's first name; `sailor_name` is the full helm name; UID is `SL-<sail_no>`.
+
+**Sailors per class (current data):**
+- Database: 55 sailors across 11 boat classes, imported from Boats_Master.xml
+- Dynamic: Varies based on racing_today selection and Flag Machine sequences
 
 #### 2. Sailor Card Display
 
@@ -191,6 +208,35 @@
 4. Disable End button, re-enable Start button
 5. Stop elapsed time polling
 6. Data persisted in `race_sailors` + `lap_records` tables
+
+---
+
+### v1.2 API Endpoints (Session 5 Additions)
+
+**New endpoints:**
+```
+GET  /api/lap-times/<uid>          # Get lap times for a specific sailor
+```
+
+**Modified endpoints:**
+```
+POST /api/class-start              # Added: sequence_number parameter
+GET  /api/sailors-for-onwater      # Enhanced: sequence-aware grouping, empty columns
+GET  /api/export-race-csv         # Enhanced: sequence_number and lap_times columns
+```
+
+### v1.2 Database Schema (Session 5 Additions)
+
+**New column:**
+```sql
+-- Added to race_class_starts table
+ALTER TABLE race_class_starts ADD COLUMN sequence_number INTEGER DEFAULT 1
+```
+
+**Modified behavior:**
+- `race_class_starts` now stores sequence_number from Flag Machine grid_index
+- `/api/sailors-for-onwater` uses sequence_number for grouping
+- Lap times stored in existing `lap_records` table with timestamps
 
 ---
 
@@ -372,3 +418,145 @@ CREATE TABLE lap_records (
 - Role-based access control
 - Multi-user concurrent locking
 - Real-time sync to multiple tablets
+
+---
+
+## PART 3: FINISH SHEET v1.3 (Session 6, 2026-10-16) — Multi-Station
+
+All items below PASSED the human browser test 2026-10-16 (process rule 2026-10-15).
+
+### 1. Flag library split (prerequisite, F0)
+- Flags live in `static/flags/classflags/` (boat class flags) and
+  `static/flags/signalflags/` (p.png blue peter, Dflag, black flag, postpone, shortened).
+  The RO flag picker shows two labelled groups: CLASS FLAGS then SIGNAL FLAGS.
+- `boat_classes.flag_image` and the start sequence keep BARE filenames; the server resolves
+  each to its subfolder URL (`flag_url()`). p.png (signal) and pclass.png (P Class) are
+  never merged; the startup repair scans classflags/ only.
+- The outdoor display board shows the active row's flags at their new locations.
+
+### 2. Stations
+- The finish sheet is served per station: `/finishsheet?station=1` or `?station=2`. The URL
+  is authoritative, remembered per tab (sessionStorage), shown as a badge in the banner; the
+  browser tab title reads "Finish sheet 1" / "Finish sheet 2". Plain /finishsheet = station 1.
+- Each station shows ONLY the class columns assigned to it.
+
+### 3. Class-to-station split
+- Default: the FIRST 3 columns on the sheet go to station 1, the remainder (including the
+  Open Category column — it behaves like any other class) to station 2. New classes added
+  later default by sheet position without disturbing stored toggles.
+- A toggle button on each class column header moves that class to the other station so the
+  scorers can balance workload mid-race.
+- Assignments are server-truth in `class_station_assignments` and KEPT FOR THE WHOLE DAY:
+  they survive races, End Race, Reset Finish Sheet and a server restart. 4 classes per
+  station is guidance only (not enforced).
+
+### 4. Undo (per station, one step)
+- Each station has an instant "Undo" button (no confirm): reverses THAT station's most
+  recent capture only — lap or finish, any sailor; never the other operator's. Pressing
+  again steps to that station's previous capture.
+- A toast confirms what was removed ("Stepped back: Lap 3 for Anton (14:03:12)") with a
+  RESTORE button; restore re-applies the capture with its ORIGINAL timestamp.
+- Time policy (agreed with the RO): undo removes only the mistaken action; all other
+  timestamps stay exact; the undone action's time drops off the live sheet (accepted).
+- Server-side 2-second double-capture guard: the same sailor lapped twice within 2s is
+  rejected (double tap or both operators).
+- Every capture carries its station ID (logged in `capture_actions`; record/replay can
+  distinguish screens).
+- All stations re-render within ~0.5s of a toggle, undo or restore (sheet_version in
+  /api/race-status).
+
+### 5. Layout (two rounds of RO feedback, 2026-10-16)
+- Unified button system on all pages: 8px radius, 15px bold text, 46px min height, hover
+  lift, semantic colour classes only (no inline style overrides).
+- RO page: header [Start][Stop][Reset][End Race][Sound On] + clocks + STATE +
+  [Import Sailwave sailors]. Bottom bar: [Display Mode: Flags/Both/Timer] ...
+  [Display Board][Finish Sheet 1][Finish Sheet 2] — AMENDED 2026-10-27 (bug 30):
+  the station buttons navigate THIS tab (one button, one destination); only the
+  Display Board opens a new tab (it runs on the separate outdoor screen).
+- Finish sheet banner: [FINISH SHEET + station badge] [<- Race Officer Control]
+  [ELAPSED TIME] [Sailor Registry][Start Race][End Race][Undo][Export CSV]
+  [Import Sailwave sailors].
+- Sailor cards are two lines: sailor name + COMPLETE sail number (larger, never truncated)
+  on top, boat class in a smaller row underneath; light-coloured column scrollbars.
+
+### 6. Import Sailwave sailors
+- ONE identical purple button on all pages (RO + both finish sheets), same handler and
+  wording.
+- Source is the Sailwave HTML competitor list `Boats_master.htm` (Sailwave folder preferred,
+  tempref/boat_master.htm next; `Boats_Master.xml` remains a fallback when no HTM exists).
+- Identity rules unchanged: UID = SL-<sail no>, short name = helm's first name,
+  class = the division column (e.g. "ILCA 6"), handicap imported from the Handicap column.
+
+---
+
+## PART 4 (2026-10-20 → 2026-10-27) — Sailwave Series Export + Race-Day Robustness
+
+Requirements agreed with the RO during the first field racedays (A Series
+17 Oct, Points Races 24 Oct). Bugs 28 + 30 passed their human tests;
+27 / 29 / 31 are coded and awaiting the next race-day browser test.
+
+### 1. Sailwave CSV export naming (bug 29)
+- The export filename is named by the SERIES matched from the HYC race
+  calendar plus the race date: `<Series> <DD-MM-YYYY>.csv`; without a
+  calendar match it falls back to `race_<id>_results.csv`.
+- The Series column carries the same matched series name (blank without a
+  calendar match).
+- Races after the first of their series append their race number to the
+  filename (` R2`, ` R3`…) so the day's races never overwrite each other.
+
+### 2. Series race numbers (RO request 2026-10-27)
+- Sailwave needs the race number WITHIN a series, incremental across the
+  whole season — NOT the DB race id and NOT a per-day number (Twilight
+  Series runs R1, R2, R3… every Wednesday over the weeks).
+- Every STARTED race whose date maps to the same calendar series counts,
+  ordered by earliest recorded start; numbers stay stable as races are
+  added. Races on dates with no calendar series fall back to the
+  race-of-day number.
+- The calendar ships WITH THE APP (`drag-drop-app/HYC Calendar
+  2026-2027.xlsx`); the Sailwave database folder wins when it has one — so
+  every machine (incl. the Dell) names exports without extra setup.
+
+### 3. Race state must survive a server restart (bug 27)
+- If the app restarts mid-race, the RUNNING race is recovered at startup:
+  recent (<12h) races are adopted back into memory (End Race, laps and
+  export target the LIVE race); older orphans are closed ENDED at their
+  last activity time.
+- The finish-sheet Start Race (manual backup) must NEVER produce a second
+  concurrent race for the same sailing.
+
+### 4. On-sheet lap counts must be the truth (bug 28)
+- Open-category sailors (and late sign-ons) show their REAL lap count and
+  finish state on every poll, re-render and browser refresh — the counter
+  must never reset to 0 while the race is live.
+
+### 5. Navigation goes to ONE destination (bug 30)
+- Every work-page button (Finish Sheet 1/2, Race Officer Control)
+  navigates the CURRENT tab. No button may spawn a new browser session.
+- The Display Board link is the ONLY exception (separate outdoor screen).
+
+### 6. The RO page must not lose state (bug 31)
+- Navigating away and back (or refreshing) keeps the start sequence:
+  every flag (primary/secondary/tertiary), label, duration and grid number.
+- A countdown that was RUNNING keeps ticking with the CORRECT remaining
+  time — no reset to initial values, no stopped clock.
+- Class starts that completed while the RO page was away are recorded on
+  return, BACKDATED to their true crossing time (and never duplicated).
+- The catch-up is silent: no pile-up of horns/announcements for flags
+  that moved while the page was away.
+- KNOWN LIMITATION: the countdown only ticks while an RO page is open; a
+  start falling due while the page is away only reaches the finish sheet
+  when the RO returns. Keep the RO page on its own screen while the
+  countdown runs (as on the water anyway). Server-side timing is the
+  future fix.
+
+### 7. Re-export any recorded race (feature 5 groundwork)
+- `scripts/export_race_by_id.py --race <id> [--db <db>] [--out <folder>]`
+  re-exports a recorded race with the correct series name and race number,
+  always from a scratch copy — the live score.db is never opened directly.
+
+### 8. Data safety on race days
+- Back up `score.db` before any surgery (naming:
+  `score.db.backup-<YYYYMMDD>`); all repairs are transactional and
+  verified inside the transaction before commit.
+- Regression scripts are hermetic: they never test against the live
+  score.db and they clear the race history in their scratch copies.

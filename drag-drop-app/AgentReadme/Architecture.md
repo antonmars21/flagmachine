@@ -1,6 +1,6 @@
 # Flag Machine + Finish Sheet — Session 5 Architecture
 
-**Status**: Session 5 complete (Obj 1, 2, 3 delivered). See `SESSION6_PLAN.md` for handoff/known bugs.
+**Status**: Session 5 complete - Dynamic Start Sequences implemented. See `SESSION5_COMPLETED.md` for full details.
 
 ---
 
@@ -20,6 +20,10 @@ Single Flask app (`app.py`, port 5000, debug=True) serving both Flag Machine (`/
 - **Sailor registry sidebar** (reinstated from old score.py/score.html): slide-out panel on `/finishsheet` — search, racing-today checkbox (sign-on for today), add/edit/delete. Endpoints: `/api/sailors-registry`, `/api/toggle-racing`, `/api/add-sailor`, `/api/edit-sailor/<uid>`, `/api/delete-sailor/<uid>`.
 - **Sailor card behavior**: lap/finish controls disabled until that sailor's class has started (enforced server-side in `/api/record-lap` and `/api/mark-finish`, not just UI); amber glow (`class-started`) matches Flag Machine's active countdown color. Auto-sort by lap_count desc/seed asc; finishing always drops a sailor to the bottom (by finish time), overriding manual drag placement.
 - **CSV export**: `/api/export-race-csv` downloads Class, Sailor, SailNo, StartTime, Laps, FinishTime, RaceEndTime for the current/last race.
+- **Dynamic start sequences**: `/api/class-start` now accepts `sequence_number` parameter, stored in `race_class_starts.sequence_number` for grouping results by start sequence.
+- **Enhanced CSV export**: Now includes Sequence and Lap Times columns with full timestamp data.
+- **Lap times API**: `/api/lap-times/<uid>` endpoint to retrieve individual lap timestamps.
+- **Sequence-aware finish sheet**: `/api/sailors-for-onwater` groups sailors by (class_id + sequence_number) to create separate columns for each start sequence.
 
 ### Deprecated
 `score.py` (port 5001) front-end fully decommissioned; its registry UI/UX was ported into the Finish Sheet sidebar (see above). `score.db` schema preserved.
@@ -35,13 +39,13 @@ score.db                   SQLite DB (sailors, boat_classes, races, race_sailors
 migrate_boat_classes.py    One-off migration script (safe to delete once stable)
 
 templates/
-  index.html               Flag Machine control panel (Start 1 / Start 2 grids)
+  index.html               Flag Machine control panel (dynamic N grids via "+" button)
   display.html             Outdoor display board
-  finishsheet.html         Finish Sheet UI + registry sidebar markup
+  finishsheet.html         Finish Sheet UI + registry sidebar markup (dynamic columns)
 
 static/js/
-  app.js                   Flag Machine engine (sequential countdown, class-start POST)
-  finishsheet.js           Finish Sheet engine (dynamic columns, registry sidebar,
+  app.js                   Flag Machine engine (sequential countdown, class-start POST, dynamic grid management)
+  finishsheet.js           Finish Sheet engine (dynamic columns, registry sidebar, sequence display,
                            sort/finish-drop, polling)
 static/css/
   style.css                Flag Machine + shared styles
@@ -57,8 +61,10 @@ static/css/
 | POST | `/api/end-race` | Freeze timer, record end_time (idempotent) |
 | POST | `/api/reset-race` | Zero all race/timer state back to READY |
 | GET | `/api/export-race-csv` | Download race results CSV |
-| GET | `/api/sailors-for-onwater` | Dynamic columns for Finish Sheet |
+| GET | `/api/sailors-for-onwater` | Dynamic columns for Finish Sheet (sequence-aware) |
 | GET | `/api/sailors-registry` | Full fleet list w/ racing_today |
+| GET | `/api/lap-times/<uid>` | Get lap timestamps for a sailor |
+| POST | `/api/class-start` | Class start with sequence_number |
 | POST | `/api/toggle-racing` | Sign a sailor on/off for today |
 | POST/PUT/DELETE | `/api/add-sailor`, `/api/edit-sailor/<uid>`, `/api/delete-sailor/<uid>` | Registry management |
 
@@ -431,3 +437,193 @@ AgentReadme/
 3. Implement CSV export for race results
 4. Decommission score.py (remove front-end, archive code)
 5. Deploy to production (Raspberry Pi or cloud)
+
+---
+
+## SESSION 6 (2026-10-16) — Multi-Station Finish Sheet + Flag Split + Sailwave HTM Import
+
+### New in Session 6 (all human-test passed 2026-10-16)
+
+- **Flag folder split (F0)**: flags live in `static/flags/classflags/` + `static/flags/signalflags/`.
+  The RO picker shows CLASS FLAGS + SIGNAL FLAGS groups. `flag_url(filename)` resolves every
+  flag image to its subfolder (RO picker, start event rows, secondary/tertiary slots, display
+  board); bare filenames stay in `boat_classes` and the sequence, so class matching, CSV and
+  recorded sessions are unaffected. The startup repair scans classflags/ only.
+- **Stations**: `/finishsheet?station=1|2`; the route passes the station to the template for
+  the tab title; `getStationFromUrl()` in finishsheet.js (URL authoritative, sessionStorage
+  per tab, default 1); station badge in the banner.
+- **Class-to-station split**: table `class_station_assignments` (class_key `c<class_id>` or
+  `open`, station 1|2, kept for the whole day). `get_station_assignments()`: stored toggles
+  win, default by sheet position (first 3 columns -> station 1). Column-header toggle button
+  POSTs `/api/assign-class-station`.
+- **Undo (per screen)**: table `capture_actions` — every lap/finish logged with its station
+  and ORIGINAL timestamp (laps reference `lap_records.id` via ref_id; undone rows kept for
+  Restore). `/api/record-lap` and `/api/mark-finish` accept a `station` field; a 2s
+  double-capture lap guard rejects the same sailor lapped twice within 2 seconds.
+  `POST /api/undo-last {station}` reverses that station's latest non-undone capture;
+  `POST /api/restore-last {station}` re-applies the most recently undone action with its
+  ORIGINAL timestamp. Superseded finishes refuse with 409. Toast with Restore on the acting
+  station; nothing is hard-deleted.
+- **sheet_version re-render**: `/api/race-status` reports `app_state['sheet_version']`;
+  column toggle, undo and restore bump it; every station's 500ms poller re-renders when it
+  changes (~0.5s convergence).
+- **Sailwave import**: source is `boat_master.htm` (the Sailwave HTML competitor list;
+  Boats_master.htm in the Sailwave folder preferred) with `Boats_Master.xml` fallback.
+  `parse_sailwave_htm()` in scripts/import_sailwave.py maps the table (Fleet, Class, Boat,
+  SailNo, HelmName, Handicap) onto the same boat shape as the XML parser. The
+  'Import Sailwave sailors' button is identical on all pages.
+- **UI**: unified .btn spec across pages; RO bottom bar has Display Board + Finish Sheet 1/2
+  links (all new tab); two-line sailor cards (name + complete sail number, class under);
+  light scrollbars.
+
+### New/changed API routes (Session 6)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/api/assign-class-station` | Move a class column to the other station |
+| POST | `/api/undo-last` | Reverse this station's most recent capture |
+| POST | `/api/restore-last` | Restore the most recently undone capture (original time) |
+| GET | `/api/sailors-for-onwater?station=N` | Station-filtered columns + assignments map |
+| GET | `/finishsheet?station=N` | Per-station page (tab title "Finish sheet N") |
+
+`/api/race-status` now also reports `sheet_version`. `/api/record-lap` and `/api/mark-finish`
+accept (and log) a `station` field.
+
+### Regression scripts added (Session 6)
+
+- `scripts/test_stations.py` — class split: defaults, filtering, toggle, upsert,
+  new-class default, persistence across a race cycle, validation.
+- `scripts/test_stepback.py` — undo/restore with original timestamps, station isolation,
+  2s guard, superseded-finish 409s, validation.
+- `scripts/test_import_htm.py` — boat_master.htm parse + scratch-DB import + source preference.
+
+Full 10-script regression suite passes.
+
+### Known gaps (planned feature 4 remainder)
+
+- Captures do not yet propagate between stations sub-second during a race (SSE planned —
+  add the SSE endpoint to RECORD_NOISE when built).
+- Manual drag order is still tab-local (`race_sailors.placement` still never written).
+- Optional: double-capture dimming ("Station N capturing" while a card is touched).
+
+---
+
+## SESSION 7 (2026-10-20 → 2026-10-27) — Sailwave Series Export + Race-Day Robustness
+
+All changes regression-tested (17-script suite in `scripts/`); bugs 28 + 30
+human-test PASSED, 27 + 29 + 31 coded and awaiting/under human test (see
+`Bug fixes and new features.md` bugs 27-31).
+
+### 1. HYC race calendar integration (bugs 29 + series naming)
+
+- `find_calendar_file()` locates `HYC Calendar*.xlsx` in the Sailwave database
+  folder (`C:\Users\Public\Documents\Sailwave\Flagmachine_database`) FIRST, then
+  **falls back to the app folder** — the calendar now SHIPS WITH THE APP
+  (`drag-drop-app/HYC Calendar 2026-2027.xlsx`), so every machine running a
+  current checkout names exports correctly (the Dell had no calendar and every
+  export silently fell back to `race_<id>_results.csv` with an empty Series).
+- `_calendar_events_by_date()` parses the xlsx ONCE into a `{date: event}` map
+  (same rules as before: non-racing rows skipped, latest start-time row of a
+  day wins — the Wednesday Twilight rule). `get_calendar_event_for_date()` is
+  now a dict lookup on it.
+
+### 2. Sailwave CSV export: series naming + series race numbers
+
+`/api/export-race-csv` (Sailwave import format):
+- **Series column** = the calendar event matched by the race's earliest
+  recorded start (`_race_date`).
+- **Race column** = `Race <n>` where n is `_series_race_number(race_id)`:
+  the race's position WITHIN its series, incremental across the whole season
+  (Twilight Series runs R1, R2, R3… every Wednesday), ordered by earliest
+  recorded start; EVERY started race of the series counts (numbers stay
+  stable). Without a calendar series it falls back to `_race_ordinal_of_day()`
+  (race-of-day number).
+- **Filename** = `<Series> <DD-MM-YYYY>.csv`, with ` R<n>` appended for races
+  after the first of the series (so the day's races never overwrite each
+  other); fallback `race_<id>_results.csv` when no calendar match.
+- `scripts/export_race_by_id.py` re-exports ANY recorded race from ANY
+  score.db copy (always via a scratch copy — feature 5 "results review +
+  re-Export" groundwork).
+
+### 3. Race state recovery after a mid-race restart (bug 27)
+
+`recover_running_race()` runs at app start, in `if __name__ == '__main__'`
+ONLY — never at import, because regression scripts swap `DB_PATH` after
+importing:
+- a RUNNING race with activity in the last 12h is ADOPTED back into
+  `app_state` (race_id, class_start_times from `race_class_starts`,
+  open_start_time from `race_open_starts`) so End Race / laps / export all
+  target the live race;
+- older RUNNING races are abandoned crash orphans — closed ENDED at their
+  last activity time so they stop blocking the new session.
+Root cause (24 Oct): race state is memory-only; a mid-race Flask restart
+orphaned the RUNNING race, the finish sheet's manual Start Race then created
+a DUPLICATE race, and the real race could never be ended or exported.
+
+### 4. True lap counts for open-category sailors + late sign-ons (bug 28)
+
+`/api/sailors-for-onwater`'s "live rows" query (the ONLY source of
+open-category sailors — the started-classes query filters on `s.class_id`,
+NULL for open sailors) now LEFT JOINs `race_sailors` and returns the REAL
+`lap_count`/`finish_time`. Previously it hardcoded `0`, resetting the
+on-sheet lap counter on every poll/re-render/browser refresh, so scorers
+re-clicked and recorded duplicate laps seconds apart (24 Oct: Gabrielle
+Marais, Europe/Open). PASSED human test 2026-10-27.
+
+### 5. One-destination navigation (bug 30)
+
+The station buttons on the RO page and the Race Officer Control button on
+the finish sheets all navigate the CURRENT tab (no `target="_blank"`).
+Station identity lives per browser tab (sessionStorage) — new tabs were
+fresh, blank sessions that fought the real stations over captures. The
+Display Board link keeps its new-tab behaviour BY DESIGN (it runs on the
+separate outdoor screen). PASSED human test 2026-10-27.
+
+### 6. RO page restores its sequence and resumes a running countdown (bug 31)
+
+- `templates/index.html` embeds `window.INITIAL_SEQUENCE` from
+  `app_state['sequence']`; `app.js restoreSequenceFromServer()` rebuilds
+  every grid + row (primary/secondary/tertiary flags, labels, minutes,
+  grid numbers) on page load when the page's own sequence is empty.
+- Countdown resume: Start POSTs `countdown_started_ms` (epoch ms) via
+  `/execute-control` START → stored as `app_state['fm_countdown_started_ms']`
+  → carried by `/api/race-status` → the RO page's 500ms poller RESUMES the
+  countdown from the real elapsed time when fm is RUNNING with a stored
+  start. STOP / RESET / END_RACE clear it.
+- `/api/class-start` accepts optional `started_at_ms` (PAST values only):
+  when the RO page catches up on rows that completed while it was away, the
+  start is recorded BACKDATED to its true crossing time. Re-fires are
+  ignored (`INSERT OR IGNORE` — first trigger wins, no duplicates).
+- The first tick after a resume catches up SILENTLY
+  (`state.catchUpTick`): no horn blast / announcement pile-up for flags
+  that went up/down while the page was away.
+
+### New/changed endpoints + fields (Session 7)
+
+| Where | Change |
+|---|---|
+| `/api/race-status` | + `fm_countdown_started_ms` |
+| `/execute-control` | START stores `countdown_started_ms`; STOP/RESET/END_RACE clear it |
+| `/api/class-start` | + optional `started_at_ms` (backdating, past only) |
+| `/api/sailors-for-onwater` | live rows carry REAL lap_count/finish_time |
+| `/api/export-race-csv` | Series column, `Race <n>`, series+date filename with `R<n>` |
+| `/` (index.html) | + `window.INITIAL_SEQUENCE` |
+
+### Regression scripts added (Session 7)
+
+`scripts/test_export_naming.py`, `test_race_recovery.py`,
+`test_open_lap_counts.py`, `test_navigation.py`, `test_ro_restore.py`
+(full suite: 17 scripts). Note: export tests are HERMETIC — they clear the
+race history in their scratch copy, because the live DB accumulates same-day
+test races and the series race number counts every started race.
+
+### Known gaps / limitations (Session 7)
+
+- **The countdown only ticks while an RO page is open.** A class start that
+  falls due while the RO page is away fires on RETURN (backdated correctly),
+  but the finish sheet's lap buttons for that class stay locked until then.
+  Server-side countdown timing is the future fix.
+- Pause (STOP) → Start still RESTARTS the countdown from zero (unchanged
+  behaviour); a reload during a pause does not auto-resume.
+- Bug 26 (more drag-and-drop space in start-event boxes) still open.
+

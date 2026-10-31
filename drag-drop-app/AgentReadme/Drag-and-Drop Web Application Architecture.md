@@ -57,7 +57,7 @@ old 30/05/2026
 For future system updates or debugging, use these configuration properties extracted from system verification:
 
 * **Host Environment Manager:** Anaconda (Conda Base Environment)
-* **Absolute Python Runtime Path:** `C:\Users\anton\miniconda3\python.exe`
+* **Absolute Python Runtime Path:** `C:\ProgramData\miniconda3\python.exe`
 * **Network Binding Endpoint:** `http://127.0.0.1:5000`
 
 ### Routine Project CLI Commands
@@ -66,12 +66,12 @@ Always run these commands from the `C:\Users\anton\flagmachine\drag-drop-app` fo
 
 #### Install Dependencies
 ```powershell
-C:\Users\anton\miniconda3\python.exe -m pip install flask
+C:\ProgramData\miniconda3\python.exe -m pip install flask
 ```
 
 #### Launch Application Engine
 ```powershell
-C:\Users\anton\miniconda3\python.exe app.py
+C:\ProgramData\miniconda3\python.exe app.py
 ```
 
 #### Terminate Server Instance
@@ -136,14 +136,14 @@ The execution layer shifts the application from a passive planner into an active
 ## 🐍 Environment Settings & Command Logs
 
 * **Host Machine Manager**: Anaconda (Conda Base System Path Environment)
-* **Absolute Python Engine Direct Path**: `C:\Users\anton\miniconda3\python.exe`
+* **Absolute Python Engine Direct Path**: `C:\ProgramData\miniconda3\python.exe`
 * **Application Workspace Root Directory**: `C:\Users\anton\flagmachine\drag-drop-app`
 * **Local Web Server Access Address**: `http://127.0.0.1:5000`
 
 ### Terminal Launch Sequences
 ```powershell
 cd C:\Users\anton\flagmachine\drag-drop-app
-C:\Users\anton\miniconda3\python.exe app.py
+C:\ProgramData\miniconda3\python.exe app.py
 
 ### 1. The Frontend UI (HTML5 / Native JavaScript)
 * **Left-Side Library Column**: Acts as an independent repository housing predefined sailing class templates and graphic flag assets. The Race Officer populates and designs the event sequence by dragging elements out of this menu and dropping them directly into the planner grid.
@@ -158,7 +158,7 @@ C:\Users\anton\miniconda3\python.exe app.py
 ## 🐍 Environment Data & Command Logs
 To bypass path mismatches, the codebase directly references the explicit local path environment:
 * **Host Environment Manager**: Anaconda / Miniconda (Conda Base Environment Context)
-* **Absolute Python Runtime Path**: `C:\Users\anton\miniconda3\python.exe`
+* **Absolute Python Runtime Path**: `C:\ProgramData\miniconda3\python.exe`
 * **Network Binding Endpoint**: `http://127.0.0.1:5000`
 
 ## 🔄 Revision Addendum: Vertical Sequence Planner Pivot
