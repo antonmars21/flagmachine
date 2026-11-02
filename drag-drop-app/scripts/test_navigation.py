@@ -74,17 +74,20 @@ assert '/finishsheet' not in html and not re.search(r'href="/"', html), \
 print('display board: no work-page navigation links')
 
 # START.bat is now the navigation mechanism: it must open all four pages as
-# separate application windows (--app mode) after the server is up.
+# separate windows via START.bat (regular browser tabs, not --app mode).
+# The kanban "Fix screen navigation" change: one main browser window with
+# the RO page (tabs work), stations + display as separate --new-window
+# instances so they appear as distinct taskbar icons.
 with open('START.bat', encoding='utf-8', errors='replace') as f:
     bat = f.read()
 for url in ('http://localhost:5000/"',
             'http://localhost:5000/finishsheet?station=1',
             'http://localhost:5000/finishsheet?station=2',
             'http://localhost:5000/display'):
-    assert f'--app="{url}' in bat or f'--app={url}' in bat, \
-        f'START.bat must open {url} as an application window'
-assert '--app' in bat, 'START.bat must use --app (application windows, not browser tabs)'
-print('START.bat: opens RO control + both finish sheets + display board as app windows')
+    assert url in bat, f'START.bat must open {url}'
+assert '--new-window' in bat, 'START.bat must use --new-window for station/display windows'
+assert '--app=' not in bat, 'START.bat must NOT use --app mode (kanban: regular tabs)'
+print('START.bat: opens RO control (main tab) + stations + display as separate windows')
 
 # Single-instance guard: relaunching must never start a SECOND server. The
 # already-running check (urlopen) must appear BEFORE the server start line.

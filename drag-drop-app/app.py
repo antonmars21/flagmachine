@@ -256,6 +256,34 @@ def _calendar_events_by_date(calendar_path=None):
     return {d: ev for d, (ev, t) in events.items()}
 
 
+def _calendar_racing_dates(calendar_path=None):
+    """[(date, event_name, (hour, minute)), ...] for every racing date in the
+    calendar, sorted by date. Unlike _calendar_events_by_date this keeps the
+    scheduled start time - needed for the series import template."""
+    path = calendar_path or find_calendar_file()
+    if not path or not os.path.exists(path):
+        return []
+    events = {}
+    current_date = None
+    for date_text, time_text, event in _xlsx_rows(path):
+        d = _parse_calendar_date(date_text)
+        if d:
+            current_date = d
+        ev = (event or '').strip()
+        if not ev or not current_date:
+            continue
+        low = ev.lower()
+        if any(w in low for w in CALENDAR_EXCLUDE_WORDS):
+            continue
+        if not any(w in low for w in CALENDAR_RACING_WORDS):
+            continue
+        t = _parse_calendar_time(time_text)
+        prev = events.get(current_date)
+        if prev is None or (t is not None and (prev[1] is None or t > prev[1])):
+            events[current_date] = (ev, t)
+    return sorted((d, ev, t) for d, (ev, t) in events.items())
+
+
 def get_calendar_event_for_date(target_date, calendar_path=None):
     """Return the regatta/series name for a date from the HYC race calendar,
     or None when the calendar/file/date has no racing event.
@@ -426,9 +454,16 @@ def init_finishsheet_tables():
         lap_count INTEGER DEFAULT 0,
         finish_time TEXT,
         placement INTEGER,
+        code TEXT,
         FOREIGN KEY(race_id) REFERENCES races(race_id),
         FOREIGN KEY(uid) REFERENCES sailors(uid)
     )''')
+
+    # Backward-compat: add code column if race_sailors pre-existed without it
+    c.execute("PRAGMA table_info(race_sailors)")
+    rs_columns = [col[1] for col in c.fetchall()]
+    if 'code' not in rs_columns:
+        c.execute('ALTER TABLE race_sailors ADD COLUMN code TEXT')
     
     c.execute('''CREATE TABLE IF NOT EXISTS lap_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1784,6 +1819,105 @@ def reset_finish_sheet():
     return jsonify({"status": "success", "message": "Finish sheet reset - ready for the next race"})
 
 
+def build_series_template_csv(series_name, current_race_id):
+    """Generate a Sailwave series-import CSV for the whole series that the
+    current race belongs to. One row per racing date in the HYC calendar
+    matching the series name, with RaceNo, RaceName, PublishedRaceDate,
+    PublishedRaceTime - the fields Sailwave's race-results import (v2.28.9+)
+    uses to create races with their scheduled dates and start times.
+    Already-sailed races get their ACTUAL start time from the DB; future
+    races get the calendar's scheduled time. Returns (csv_text, filename)."""
+    import csv as csv_mod
+    import io as io_mod
+
+    racing_dates = _calendar_racing_dates()
+    if not racing_dates:
+        return '', None
+
+    # All dates belonging to this series
+    series_dates = [(d, ev, t) for d, ev, t in racing_dates if ev == series_name]
+    if not series_dates:
+        return '', None
+
+    # Map series dates to recorded races in the DB (by earliest start date)
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT r.race_id AS rid, MIN(s.start_time) AS st
+        FROM races r
+        JOIN (
+            SELECT race_id, start_time FROM race_class_starts
+            UNION ALL
+            SELECT race_id, start_time FROM race_open_starts
+        ) s ON s.race_id = r.race_id
+        GROUP BY r.race_id
+        ORDER BY st
+    ''')
+    db_races = []  # [(date, race_id, earliest_start_iso)]
+    for row in c.fetchall():
+        if not row['st']:
+            continue
+        try:
+            d = datetime.fromisoformat(row['st']).date()
+            db_races.append((d, row['rid'], row['st']))
+        except ValueError:
+            continue
+    conn.close()
+
+    # Build series race numbers: every started race of the series counts,
+    # ordered by earliest start (same rule as _series_race_number)
+    series_race_numbers = {}  # race_id -> number
+    series_db_dates = set()   # dates that have a recorded race
+    n = 0
+    for d, rid, st in sorted(db_races, key=lambda x: x[2]):
+        if d in {sd[0] for sd in series_dates}:
+            n += 1
+            series_race_numbers[rid] = n
+            series_db_dates.add(d)
+
+    # Race number for each calendar date: sailed dates use the series race
+    # number; unsailed dates continue the sequence after the last sailed one.
+    last_sailed_no = max(series_race_numbers.values()) if series_race_numbers else 0
+    out = io_mod.StringIO()
+    w = csv_mod.writer(out)
+    w.writerow(['Series', 'RaceNo', 'RaceName', 'PublishedRaceDate', 'PublishedRaceTime', 'Sailed'])
+    unsailed_no = last_sailed_no
+    for d, ev, t in series_dates:
+        # Check if this date has a recorded race
+        actual_start = None
+        actual_race_id = None
+        for bd, rid, st in db_races:
+            if bd == d:
+                actual_start = st
+                actual_race_id = rid
+                break
+        if actual_race_id:
+            race_no = series_race_numbers.get(actual_race_id, unsailed_no + 1)
+        else:
+            unsailed_no += 1
+            race_no = unsailed_no
+        if actual_start:
+            try:
+                dt = datetime.fromisoformat(actual_start)
+                pub_date = dt.strftime('%Y-%m-%d')
+                pub_time = dt.strftime('%H:%M:%S')
+            except ValueError:
+                pub_date = d.strftime('%Y-%m-%d')
+                pub_time = f'{t[0]:02d}:{t[1]:02d}:00' if t else ''
+            sailed = 'yes'
+        else:
+            pub_date = d.strftime('%Y-%m-%d')
+            pub_time = f'{t[0]:02d}:{t[1]:02d}:00' if t else ''
+            sailed = 'no'
+        race_name = f'R{race_no}'
+        w.writerow([ev, race_no, race_name, pub_date, pub_time, sailed])
+
+    safe = re.sub(r'[<>:"/\\|?*]', '', series_name).strip()
+    safe = re.sub(r'\s+', ' ', safe)
+    filename = f'{safe}_series_template.csv'
+    return out.getvalue(), filename
+
+
 @app.route('/api/export-race-csv')
 def export_race_csv():
     """Export current/last race as CSV for DIRECT SAILWAVE IMPORT (features
@@ -1866,7 +2000,17 @@ def export_race_csv():
             return datetime.fromisoformat(iso).strftime('%H:%M:%S')
         except (ValueError, TypeError):
             return iso or ''
-    
+
+    def compute_code(start_iso, lap_count, finish_iso):
+        """Sailwave result code (Race_code_rules.md): DNS when the sailor
+        has no start time (class never started), DNF when they recorded
+        1+ laps but never finished, blank otherwise."""
+        if not start_iso:
+            return 'DNS'
+        if lap_count and lap_count > 0 and not finish_iso:
+            return 'DNF'
+        return ''
+
     race_date = _race_date(race_id)
     regatta = get_calendar_event_for_date(race_date)
     
@@ -1875,32 +2019,35 @@ def export_race_csv():
     
     if request.args.get('format') == 'detailed':
         # Legacy human-readable layout (club record keeping)
-        writer.writerow(['Series', 'Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time'])
+        writer.writerow(['Series', 'Sequence', 'Class', 'Sailor', 'Sail No', 'Start Time', 'Laps', 'Lap Times', 'Finish Time', 'Race End Time', 'Code'])
         for row in rows:
             uid = row['uid']
             lap_times = lap_times_by_uid.get(uid, [])
             lap_times_str = '; '.join(fmt_clock(t) for t in lap_times) if lap_times else ''
+            row_start = row['class_start_time'] or (open_start['start_time'] if open_start else '')
             writer.writerow([
                 regatta or '',
                 row['sequence_number'] if row['sequence_number'] is not None else ((open_start['sequence_number'] if open_start else '') or ''),
                 row['class_name'] or 'Unknown',
                 row['short_name'],
                 row['sail_no'],
-                row['class_start_time'] or (open_start['start_time'] if open_start else ''),
+                row_start,
                 row['lap_count'],
                 lap_times_str,
                 row['finish_time'] or '',
-                row['race_end_time'] or ''
+                row['race_end_time'] or '',
+                compute_code(row_start, row['lap_count'], row['finish_time'])
             ])
         filename = f"race_{race_id}_results.csv"
     else:
         # Sailwave import format (feature 7). Series = the calendar-matched
         # series/regatta name (blank when the race date has no calendar
         # event); Race = the stable race identifier; LapTimes = the 24h
-        # clock of every recorded lap.
+        # clock of every recorded lap. Code = Sailwave result code
+        # (DNS/DNF per Race_code_rules.md).
         writer.writerow(['Fleet', 'Class', 'SailNo', 'HelmName', 'Handicap',
                          'Series', 'Race', 'StartTime', 'FinishTime', 'Elapsed',
-                         'Laps', 'LapTimes'])
+                         'Laps', 'LapTimes', 'Code'])
         series_name = regatta or ''
         # Sailwave race number: incremental WITHIN the series across the
         # whole season (Twilight Series runs R1, R2... every Wednesday),
@@ -1925,17 +2072,67 @@ def export_race_csv():
                 row['finish_time'] or '',
                 fmt_elapsed(row['finish_time'], start),
                 row['lap_count'],
-                lap_times
+                lap_times,
+                compute_code(start, row['lap_count'], row['finish_time'])
             ])
         filename = _export_filename(regatta, race_id, race_date, race_number)
     
     csv_data = output.getvalue()
-    
+
+    # Kanban: "make 2 files" - package the results CSV together with a
+    # series-template CSV (all races of this series from the HYC calendar,
+    # Sailwave race-results import fields RaceNo/RaceName/PublishedRaceDate/
+    # PublishedRaceTime) so the RO gets both in one download as a ZIP.
+    # ?format=detailed keeps the single legacy CSV (club record keeping).
+    if request.args.get('format') != 'detailed' and regatta:
+        series_csv, series_filename = build_series_template_csv(regatta, race_id)
+        if series_csv and series_filename:
+            import zipfile
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(filename, csv_data)
+                zf.writestr(series_filename, series_csv)
+            zip_buf.seek(0)
+            zip_name = re.sub(r'\.csv$', '', filename) + '.zip'
+            return Response(
+                zip_buf.getvalue(),
+                mimetype='application/zip',
+                headers={'Content-Disposition': f'attachment; filename={zip_name}'}
+            )
+
     return Response(
         csv_data,
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+def _update_sailor_code(c, race_id, uid):
+    """Recompute and store the Sailwave result code for one race_sailors row
+    (Race_code_rules.md: DNS when no start, DNF when laps but no finish,
+    blank otherwise). Called after every lap / finish / undo / restore."""
+    row = c.execute('''
+        SELECT rs.lap_count, rs.finish_time, s.class_id,
+               rcs.start_time AS class_start,
+               ros.start_time AS open_start
+        FROM race_sailors rs
+        JOIN sailors s ON rs.uid = s.uid
+        LEFT JOIN race_class_starts rcs
+               ON rcs.race_id = rs.race_id AND rcs.class_id = s.class_id
+        LEFT JOIN race_open_starts ros ON ros.race_id = rs.race_id
+        WHERE rs.race_id = ? AND rs.uid = ?
+    ''', (race_id, uid)).fetchone()
+    if not row:
+        return
+    start = row['class_start'] or row['open_start'] or ''
+    if not start:
+        code = 'DNS'
+    elif row['lap_count'] and row['lap_count'] > 0 and not row['finish_time']:
+        code = 'DNF'
+    else:
+        code = ''
+    c.execute('UPDATE race_sailors SET code = ? WHERE race_id = ? AND uid = ?',
+              (code, race_id, uid))
+
 
 @app.route('/api/record-lap', methods=['POST'])
 def record_lap():
@@ -2008,7 +2205,10 @@ def record_lap():
             SET lap_count = lap_count + 1
             WHERE race_id = ? AND uid = ?
         ''', (race_id, uid))
-        
+
+        # Maintain the Sailwave result code (DNS/DNF per Race_code_rules.md)
+        _update_sailor_code(c, race_id, uid)
+
         # Get new lap count
         lap_number = c.execute('''
             SELECT lap_count FROM race_sailors WHERE race_id = ? AND uid = ?
@@ -2090,6 +2290,10 @@ def mark_finish():
             SET finish_time = ?
             WHERE race_id = ? AND uid = ?
         ''', (finish_time, race_id, uid))
+
+        # Maintain the Sailwave result code (finished -> blank)
+        _update_sailor_code(c, race_id, uid)
+
         # Log the capture for per-station Step Back (feature 4)
         c.execute('''INSERT INTO capture_actions
                       (race_id, uid, action, station, timestamp)
@@ -2157,6 +2361,7 @@ def undo_last():
                             "message": "That finish was superseded by a later finish"}), 409
         c.execute('''UPDATE race_sailors SET finish_time = NULL
                      WHERE race_id = ? AND uid = ?''', (race_id, action['uid']))
+    _update_sailor_code(c, race_id, action['uid'])
     c.execute('UPDATE capture_actions SET undone = 1, undone_at = ? WHERE id = ?',
               (datetime.now().isoformat(), action['id']))
     conn.commit()
@@ -2211,6 +2416,7 @@ def restore_last():
         c.execute('''UPDATE race_sailors SET finish_time = ?
                      WHERE race_id = ? AND uid = ?''',
                   (action['timestamp'], race_id, action['uid']))
+    _update_sailor_code(c, race_id, action['uid'])
     c.execute('UPDATE capture_actions SET undone = 0, undone_at = NULL WHERE id = ?',
               (action['id'],))
     conn.commit()

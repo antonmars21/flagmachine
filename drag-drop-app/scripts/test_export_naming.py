@@ -135,13 +135,28 @@ client = m.app.test_client()
 
 
 def export(rid):
+    import zipfile
+    import io as _io
     m.app_state['race_id'] = rid
     m.app_state['race_ended'] = True
     resp = client.get('/api/export-race-csv')
     assert resp.status_code == 200, resp.get_data(as_text=True)
     disp = resp.headers.get('Content-Disposition', '')
     fname = re.search(r'filename=([^;]+)', disp).group(1).strip()
-    body = resp.get_data(as_text=True)
+    ct = resp.headers.get('Content-Type', '')
+    raw = resp.get_data()
+    if 'zip' in ct:
+        # ZIP response: results CSV is inside, filename has .zip extension
+        fname = fname[:-4] + '.csv' if fname.endswith('.zip') else fname
+        with zipfile.ZipFile(_io.BytesIO(raw)) as zf:
+            for name in zf.namelist():
+                if name.endswith('.csv') and 'series_template' not in name:
+                    body = zf.read(name).decode('utf-8')
+                    break
+            else:
+                body = zf.read(zf.namelist()[0]).decode('utf-8')
+    else:
+        body = raw.decode('utf-8')
     race_cell = body.splitlines()[1].split(',')[6]
     return fname, race_cell, body
 

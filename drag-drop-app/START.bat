@@ -83,10 +83,13 @@ goto WAIT_SERVER
 :SERVER_UP
 echo App is up - opening the race-day windows.
 
-REM Bug 32/34: every page opens in its OWN application window (--app mode:
-REM no browser tabs, no back/forward buttons, so the RO control window can
-REM never be navigated away or closed by mistake). Chrome if installed,
-REM otherwise Edge (present on every Windows 10/11 machine).
+REM Kanban bug "Fix screen navigation": regular browser tabs, not --app mode.
+REM One browser instance launches with the RO page as the main tab (full tab
+REM navigation, back/forward, bookmarks). Station 1 and Station 2 open as
+REM SEPARATE windows in the same browser so they appear as distinct taskbar
+REM icons - each can be dragged onto its own touch screen. Display Board also
+REM gets its own window for the outdoor screen. Chrome if installed, otherwise
+REM Edge (present on every Windows 10/11 machine).
 set "BROWSER="
 if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
 if not defined BROWSER if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
@@ -94,13 +97,16 @@ if not defined BROWSER if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\
 if not defined BROWSER if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 if not defined BROWSER set "BROWSER=msedge"
 
-start "" "%BROWSER%" --app="http://localhost:5000/"
+REM Main browser window: RO control page (tabs work, can navigate to any page)
+start "" "%BROWSER%" "http://localhost:5000/"
 timeout /t 1 /nobreak >nul
-start "" "%BROWSER%" --app="http://localhost:5000/finishsheet?station=1"
+REM Station 1 and Station 2 as separate windows = separate taskbar icons
+start "" "%BROWSER%" --new-window "http://localhost:5000/finishsheet?station=1"
 timeout /t 1 /nobreak >nul
-start "" "%BROWSER%" --app="http://localhost:5000/finishsheet?station=2"
+start "" "%BROWSER%" --new-window "http://localhost:5000/finishsheet?station=2"
 timeout /t 1 /nobreak >nul
-start "" "%BROWSER%" --app="http://localhost:5000/display"
+REM Display Board on its own window for the outdoor screen
+start "" "%BROWSER%" --new-window "http://localhost:5000/display"
 
 :SHOW_URLS
 echo.

@@ -77,9 +77,25 @@ _today = datetime.now().date()
 app_module.get_calendar_event_for_date = lambda d, calendar_path=None: 'Twilight Series club racing'
 app_module._calendar_events_by_date = lambda calendar_path=None: {_today: 'Twilight Series club racing'}
 
+
+def get_results_csv(resp):
+    """Extract the results CSV body from either a plain CSV or a ZIP response."""
+    import zipfile
+    import io as _io
+    ct = resp.headers.get('Content-Type', '')
+    raw = resp.get_data()
+    if 'zip' in ct:
+        with zipfile.ZipFile(_io.BytesIO(raw)) as zf:
+            for name in zf.namelist():
+                if name.endswith('.csv') and 'series_template' not in name:
+                    return zf.read(name).decode('utf-8')
+            return zf.read(zf.namelist()[0]).decode('utf-8')
+    return raw.decode('utf-8')
+
+
 client = app_module.app.test_client()
 resp = client.get('/api/export-race-csv')
-body = resp.get_data(as_text=True)
+body = get_results_csv(resp)
 disposition = resp.headers.get('Content-Disposition', '')
 print('HTTP', resp.status_code)
 print('Content-Disposition:', disposition)
