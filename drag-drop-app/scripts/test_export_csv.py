@@ -47,8 +47,9 @@ app_module.app_state['race_id'] = race_id
 app_module.app_state['class_start_times'] = {str(class_id): datetime.now().isoformat()}
 
 client = app_module.app.test_client()
+from scripts.export_helper import get_results_csv
 resp = client.get('/api/export-race-csv')
-body = resp.get_data(as_text=True)
+body = get_results_csv(resp)
 print('HTTP', resp.status_code)
 print(body)
 

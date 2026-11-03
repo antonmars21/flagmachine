@@ -22,10 +22,15 @@ pip install Flask
 (created once by `scripts\make_desktop_shortcut.bat` - safe to run again).
 
 **Option A — Batch file:** double-click `START.bat`
+(On the Dell PC the app lives under `C:\Users\Public\Documents` — swap the
+two `APP_DIR` lines at the top of `START.bat`/`START.ps1`: REM the active
+one, remove REM from the `C:\Users\Public\Documents\drag-drop-app` line.)
 
 Only ONE server ever runs: if the app is already up, launching again (shortcut
-or START.bat) reuses the running server and just reopens the app windows -
-close any extra windows you do not need. The server keeps running in its
+or START.bat) reuses the running server and opens the app windows ONLY if they
+are not already open - a relaunch or double-click never opens duplicates (the
+RO page cannot open twice; a launch lock plus an "app windows already open"
+check guards the window launching). The server keeps running in its
 "Flag Machine" command window; closing that window stops the app.
 
 **Option B — PowerShell:**
@@ -39,12 +44,24 @@ python app.py
 (Run in a single Command Prompt window)
 
 ### 4. Open in Browser
-START.bat does this for you: once the app answers, it opens each page in its
-own Chrome/Edge application window (--app mode, no tabs/navigation buttons):
-- **Race Officer Control:** http://localhost:5000
-- **Finish Sheet 1:** http://localhost:5000/finishsheet?station=1
-- **Finish Sheet 2:** http://localhost:5000/finishsheet?station=2
-- **Display Board:** http://localhost:5000/display
+START.bat (and START.ps1) do this for you: once the app answers, they open
+ONE NEW Brave window with the three work pages as TABS, plus the Display
+Board in its own separate window (kanban "Fix screen navigation" - regular
+browser windows, not --app mode, so Ctrl+Tab/back/forward work):
+- **One new Brave window, 3 tabs:** Race Officer Control
+  http://localhost:5000, Finish Sheet 1
+  http://localhost:5000/finishsheet?station=1, Finish Sheet 2
+  http://localhost:5000/finishsheet?station=2 - the pages stack as tabs and
+  the window has its own taskbar button; drag a tab out to split a station
+  onto a touch screen
+- **Display Board:** http://localhost:5000/display - its own separate Brave
+  window for the outdoor screen
+
+Brave is used if installed (the default browser on the club machines),
+otherwise Edge. Each page carries a distinct favicon (red RO / green 1 /
+blue 2 / orange D) shown on its browser tab. Taskbar tip: set taskbar buttons
+to "Never combine" (Settings > Personalisation > Taskbar) so every window
+shows its own icon+label.
 
 ---
 

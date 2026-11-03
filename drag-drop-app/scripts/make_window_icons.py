@@ -1,8 +1,8 @@
 """Generate the four window icons (taskbar navigator).
 
-Each page opened by START.bat as a Chrome/Edge --app window uses the page's
-FAVICON as its window/taskbar icon, so every work window gets a distinct,
-instantly recognisable icon:
+Each page opened by START.bat/START.ps1 in its own Brave/Edge browser window
+carries a distinct FAVICON, shown on the page's browser tab (and as the
+taskbar icon in --app windows), so every work page is instantly recognisable:
 
     RO control      red square, white 'RO'
     Finish Sheet 1  green square, white '1'

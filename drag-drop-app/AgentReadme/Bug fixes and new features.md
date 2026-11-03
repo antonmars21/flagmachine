@@ -18,7 +18,7 @@ in progress
 
 Bugs to fix:
 
- 26 there need to be more space to drage and drop flags into the startevent box, ad a few spaces for additional flags
+ 26 there need to be more space to drage and drop flags into the startevent box, add a few spaces for additional flags
 
 =============================
 To Test 
@@ -569,6 +569,134 @@ file exists and serves over HTTP) PASS.
 Human test: START.bat -> four windows, hover the taskbar: RO control shows
 the red RO icon, Finish Sheet 1 green 1, Finish Sheet 2 blue 2, Display
 Board orange D; F5 each window once if an icon looks stale.
+
+AMENDED 2026-11-03 (kanban "Fix screen navigation" - RO report from the old
+Dell): --app windows were hard to see/manage on the Dell; the RO wants
+REGULAR browser tabs back, but keeps the taskbar as the navigator. The
+launchers (START.bat + START.ps1) now open ONE browser with regular tabs:
+the RO control page in the main window (full tab navigation - Ctrl+Tab,
+back/forward, bookmarks) and Finish Sheet 1, Finish Sheet 2 and the Display
+Board as SEPARATE windows of the same browser (--new-window), so each keeps
+its own taskbar icon (the distinct favicons are unchanged) and any station
+window - or a tab dragged out of the main window - can be split onto the
+separate touch screen. No more --app mode anywhere; the work-page navigation
+buttons stay removed (RO page links only to /display in a new tab, finish
+sheets have no back button), so a work window still cannot be navigated onto
+another work page. START.ps1 now opens the same windows as START.bat and
+gained the same single-instance guard (relaunch reuses the running server).
+Regression: scripts/test_navigation.py updated (no --app in either launcher,
+all four URLs + --new-window in both, distinct per-page favicons, single-
+instance guard) PASS.
+Human test (PENDING on the Dell): START.bat -> one browser, four windows;
+Ctrl+Tab inside the main window, taskbar shows RO/1/2/D icons, drag the
+Station 1 window onto the touch screen; F5 each window once if an icon looks
+stale (favicons are cached).
+
+AMENDED 2026-11-03 (later same day): browser preference is now BRAVE first
+(it is the default browser on the club machines), Edge only as the fallback -
+both launchers (START.bat + START.ps1) check
+%LOCALAPPDATA%/ProgramFiles/ProgramFiles(x86) BraveSoftware paths, then the
+Edge paths; the Chrome launch path was removed. Also reverted an accidental
+START.bat edit that had dropped --new-window from the two station lines
+(stations would have merged into tabs of the main window instead of getting
+their own taskbar icons); scripts/test_navigation.py now asserts
+--new-window on EACH station/display line of both launchers plus the
+Brave-before-Edge order, so this cannot regress silently.
+
+AMENDED 2026-11-03 (requirements changed again, same day): the RO wants the
+taskbar icon navigation of the earlier version RESTORED, but the floating
+windows from the last races covered each other and could not stack as tabs.
+Final layout in both launchers (START.bat + START.ps1): RO control, Finish
+Sheet 1 and Finish Sheet 2 start as TABS in ONE NEW Brave window (a single
+--new-window launch carrying all three URLs - the window gets its own
+taskbar button, so no page merges into an existing window; Ctrl+Tab switches
+the stacked tabs), and the Display Board opens in its own SEPARATE window of
+the same browser (Brave) for the outdoor screen. Drag a station tab out of
+the work window to split it onto a touch screen. Still regular browser
+windows - not --app mode. The distinct per-page favicons (RO/1/2/D) remain as
+the tab icons. scripts/test_navigation.py updated: exactly two --new-window
+launches per launcher - one carrying all three work URLs (tabs in one
+window), one for /display (own window) - both via the Brave variable, with
+Edge only as the no-Brave fallback.
+Human test (PENDING on the Dell): START.bat -> ONE Brave window with three
+tabs (RO / Station 1 / Station 2) with its own taskbar button + ONE separate
+Brave window (Display Board); Ctrl+Tab switches the work tabs; drag the
+Station 1 tab out onto the touch screen.
+
+AMENDED 2026-11-03 (bug report "RO page opened twice"): the single-instance
+guard only protected the Flask server - every relaunch (or a double-click on
+the desktop shortcut) re-ran the window-opening block and opened the RO page
+again. Both launchers now take a LAUNCH LOCK first (START.bat: %TEMP%\
+flagmachine_launch.lock holding the launcher PID, verified alive via tasklist
+so a stale lock is taken over; START.ps1: named mutex Local\FlagMachineLauncher)
+and then check whether an app page window is already open (browser window
+titles 'Race Officer Control' / 'Finish sheet' / 'Outdoor Display'); if so
+they print "not opening duplicates" and skip launching. Relaunch reopens the
+windows only when none are open. Regression: scripts/test_navigation.py
+asserts the lock + title check run before any --new-window launch in both
+launchers PASS; full suite (20 scripts) PASS.
+Human test (PENDING on the Dell): double-click the shortcut quickly -> only
+one set of windows appears; relaunch while the windows are open -> "not
+opening duplicates"; close ALL app windows, relaunch -> the windows reopen.
+
+"DISPLAY OPENS TWICE" == CODED 2026-11-03, awaiting human test
+RO report: the Display Board opened twice. Two causes, both fixed:
+- the RO page still had a "Display Board" link (target=_blank) - next to the
+  launcher's own display window it opened a SECOND display as a tab. The link
+  is REMOVED from templates/index.html (the launchers open every page; the RO
+  page now has no navigation links at all);
+- the relaunch duplicate-window guard only looked at each browser process's
+  MAIN window title, so a display window that was not the main window was
+  missed and reopened on relaunch. The check now enumerates ALL visible
+  top-level windows (user32 EnumWindows) via scripts/check_app_windows.ps1
+  (called from START.bat; same logic inline in START.ps1 as
+  Test-AppWindowsOpen).
+Regression: scripts/test_navigation.py (RO page has no links; helper matches
+all app page titles via EnumWindows; guard runs before any --new-window
+launch in both launchers) PASS.
+
+OPEN-CLASS FLAG / STATIONS NOT ACTIVATING == CODED 2026-11-03, awaiting human test
+RO report: with the open-class flag (openclass.png) as the class flag in the
+start event, sailors did NOT default to Open Category - each stayed in their
+individual registry class column - and when the start sequence hit 0 the
+stations never activated (lap/finish buttons stayed disabled), because only
+the open start fired (class_start_times stays empty) and no card matched it.
+Root cause (app.py sailors_for_onwater): "no active class in sequence" was
+treated as "empty sequence -> show every class grouped individually", but an
+open-only (or signal-only) sequence is NOT empty - it has flags, just no boat
+class flag. Fix: the group-all-by-class branch now requires a completely EMPTY
+sequence; a sequence with any flag but no class flag sends ALL racing sailors
+to the single Open Category column, so when the start event fires, open_started
+activates every card. A class flag + open flag in the same start event still
+splits correctly (class column + Open Category).
+Regression: scripts/test_open_flag_only.py (open-only -> one Open Category
+column; open start at 0 -> all sailors class_started + lap/finish allowed;
+class+open split; empty sequence keeps the per-class setup view) PASS; full
+suite (21 scripts) PASS.
+Human test (PENDING on the Dell): drag ONLY openclass.png into a start event,
+tick sailors, Start - at 0 all sailors sit in the Open Category column on
+their station and the + Lap buttons unlock.
+
+"TICKED SAILORS NOT ADDED TO THE STATION SHEETS" (Station 1 empty) == CODED 2026-11-03, awaiting human test
+Checked against feature/sailwave-integration / tag v0.99 as requested: the
+sailor-loading path (sailors_for_onwater, station split, class matching) is
+IDENTICAL between v0.99 and HEAD - the only app.py changes since v0.99 are the
+Sailwave two-file export + Code column. Reproduced with both versions: with
+the Ilca 6 flag in the sequence, station 1 returned ZERO columns on BOTH.
+Root cause is DATA, not code: class_station_assignments rows persisted in
+score.db from a PREVIOUS day (c1/open/... pinned to station 2), and stored
+toggles win over the default split - so every current column landed on
+station 2 and Station 1 showed "No classes assigned". Fix: new
+clear_stale_station_assignments() runs at server startup (after
+recover_running_race): when no race is RUNNING it wipes the table (fresh
+day -> default split, first 3 columns on station 1); while a race is
+RUNNING the toggles are kept so a mid-day restart does not reshuffle the
+stations. Regression: scripts/test_stale_station_assignments.py (reproduces
+the empty station 1, verifies the wipe restores defaults and ticked sailors
+reappear, verifies toggles survive a running race) PASS; full suite (22
+scripts) PASS.
+Human test (PENDING): restart the app with no race running, tick sailors,
+open both stations - the first columns must appear on Station 1 by default.
 
 HERMETIC TESTS 2026-10-29: the live registry is user-managed (old sailors
 tidied away, roster refreshed from Sailwave), and four regression scripts

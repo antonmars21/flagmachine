@@ -1120,6 +1120,14 @@ def sailors_for_onwater():
     
     race_id = app_state.get('race_id')
     active_class_ids = get_active_class_ids_from_sequence()
+    # A sequence that carries ANY flag (even openclass.png or a signal flag)
+    # is a real start sequence: only classes whose flag is in it get a column,
+    # everyone else is Open Category. Only a completely EMPTY sequence shows
+    # every class grouped individually (pre-race setup view).
+    sequence_has_flags = any(
+        item.get('flag_image') or item.get('secondary_flag_image') or item.get('tertiary_flag_image')
+        for item in app_state.get('sequence', [])
+    )
     class_start_times = app_state.get('class_start_times', {})
     started_class_ids = {int(cid) for cid in class_start_times.keys()}
     
@@ -1275,8 +1283,12 @@ def sailors_for_onwater():
                     'sailors': []
                 }
             sequence_groups[group_key]['sailors'].append(sailor_dict)
-        # If no active classes in sequence (empty sequence), show all classes grouped by class only
-        elif not active_class_ids:
+        # If the sequence is completely EMPTY (no flags at all), show all classes
+        # grouped by class only (pre-race setup view). A sequence that has flags
+        # but no class flag (open-only / signal-only) sends everyone to Open
+        # Category below - otherwise an open-flag start would never match a
+        # column and the stations could not activate at the start.
+        elif not sequence_has_flags:
             # When no flags in sequence, group by class only (original behavior)
             group_key = (class_id, 1)  # Use sequence 1 for all
             if group_key not in sequence_groups:
@@ -2607,10 +2619,36 @@ def refresh_sailwave_status():
         })
 
 
+def clear_stale_station_assignments():
+    """Station toggles are meant to be kept for the whole race DAY, but they
+    persist in the DB across days/machines - stale toggles from a previous
+    session left every current column on station 2, so Station 1 showed "No
+    classes assigned" and ticked sailors never appeared on its sheet
+    (report 2026-11-03, seen against v0.99 baseline - the loading code was
+    unchanged, the DB rows were stale). Wipe them at startup when NO race is
+    running (fresh day -> default split: first 3 columns on station 1); keep
+    them while a race is RUNNING so a mid-day restart does not reshuffle the
+    stations under the scorers. Returns the number of rows cleared."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) AS n FROM races WHERE status = 'RUNNING'")
+    if c.fetchone()['n']:
+        conn.close()
+        return 0
+    c.execute('DELETE FROM class_station_assignments')
+    n = c.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
 if __name__ == '__main__':
     # Bug 27: after a mid-race restart, adopt the RUNNING race from the DB
     # (recent) or close abandoned ones (stale) before serving. Runs in the
     # real entry point only - regression scripts import the module and swap
     # DB_PATH afterwards, so no import-time DB access may happen here.
     recover_running_race()
+    cleared = clear_stale_station_assignments()
+    if cleared:
+        print(f"[stations] cleared {cleared} stale station assignment(s) from a previous day")
     app.run(host='localhost', port=5000, debug=True)

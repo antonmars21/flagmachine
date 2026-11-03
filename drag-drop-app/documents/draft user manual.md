@@ -10,7 +10,7 @@
 **Start**
 
 3. On the Race Officer page, click **Start**. The countdown runs; each start fires when its last flag row completes.
-4. Open **Finish Sheet 1** and **Finish Sheet 2** — one browser window each — and drag one onto each screen. One or two scorers can work at the same time.
+4. **Finish Sheet 1** and **Finish Sheet 2** open as tabs in the same browser window as the Race Officer page — drag a tab out into its own window and then onto each screen (one per scorer). The Display Board opens in its own separate window for the outdoor screen.
 
 **During the race**
 

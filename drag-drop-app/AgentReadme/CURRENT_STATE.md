@@ -17,10 +17,15 @@ Snapshot at **v0.99** (2026-10-29, field beta). Architecture detail lives in
 - Launch: desktop shortcut **Flag Machine** -> `START.bat`
   (single-instance guarded: a relaunch reuses the running server and just
   reopens the windows).
-- Four Chrome/Edge `--app` windows, one per work page, unique taskbar icons:
-  RO control `/`, Finish Sheet 1 `/finishsheet?station=1`,
-  Finish Sheet 2 `/finishsheet?station=2`, Display Board `/display`.
-  No page-to-page navigation buttons - the taskbar is the navigator.
+- Regular browser windows (not --app) - kanban "Fix screen navigation":
+  RO control `/`, Finish Sheet 1 `/finishsheet?station=1` and Finish Sheet 2
+  `/finishsheet?station=2` start as TABS in ONE NEW Brave window (Brave =
+  default browser on the club machines, Edge as fallback) which has its own
+  taskbar button; Display Board `/display` in its own separate Brave window.
+  Tabs stack (Ctrl+Tab) instead of floating windows overlapping; drag a tab
+  out to split a station onto a touch screen. Each page carries a distinct
+  favicon (RO/1/2/D) on its tab. No page-to-page navigation buttons - the
+  taskbar (and browser tabs) are the navigators.
 
 ## Database tables (score.db)
 
@@ -33,7 +38,7 @@ Snapshot at **v0.99** (2026-10-29, field beta). Architecture detail lives in
 | `race_class_starts` | Per-race per-class start times (flag machine) |
 | `race_open_starts` | Per-race Open Category start |
 | `lap_records` | Every lap with timestamp |
-| `class_station_assignments` | Class-column -> station (kept across races/restarts) |
+| `class_station_assignments` | Class-column -> station. Kept during a running race (mid-day restart safe); wiped at server startup when no race is RUNNING so a fresh day starts with the default split (first 3 columns on station 1) instead of stale toggles from a previous day |
 | `capture_actions` | Step-back/undo log: every lap/finish with station, undone flags |
 
 Startup repairs (run at app start): `recover_running_race()` (bug 27 -

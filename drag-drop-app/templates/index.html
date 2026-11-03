@@ -49,10 +49,11 @@
         <button id="btn-mode-both" class="btn btn-mode">🎬 Both</button>
         <button id="btn-mode-number" class="btn btn-mode">#️⃣ Timer</button>
         <span style="flex: 1;"></span>
-        <a class="btn btn-displayboard" href="/display" target="_blank" title="Open the outdoor display board">🖥 Display Board</a>
-        <!-- Bug 32/34: no station buttons here any more - START.bat opens the
-             finish sheets in their own application windows, so the RO control
-             window (and its countdown/horn/voice) can never be navigated away. -->
+        <!-- Bug 32/34 + "display opens twice": no navigation links here at all -
+             START.bat/START.ps1 open every page (finish sheets as tabs in one
+             new Brave window, the Display Board in its own window), so a link
+             would only open a duplicate page. The RO window can never be
+             navigated away. -->
     </div>
 
     <main class="workspace-container">

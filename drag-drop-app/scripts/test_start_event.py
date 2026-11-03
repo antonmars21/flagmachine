@@ -118,7 +118,8 @@ r = client.post('/api/record-lap', json={'uid': ilca6_uid})
 assert r.status_code == 200
 r = client.post('/api/record-lap', json={'uid': ilca7_uid})
 assert r.status_code == 200
-csv_text = client.get('/api/export-race-csv').get_data(as_text=True)
+from scripts.export_helper import get_results_csv
+csv_text = get_results_csv(client.get('/api/export-race-csv'))
 assert starts['Ilca 6']['start_time'][:16] in csv_text, 'Ilca 6 start time missing from CSV'
 assert starts['Ilca 7']['start_time'][:16] in csv_text, 'Ilca 7 start time missing from CSV'
 print('CSV export contains start times for both classes')

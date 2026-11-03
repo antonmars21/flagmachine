@@ -127,9 +127,10 @@ assert late['lap_count'] == 1 and late['finish_time'], 'late sign-on lap/finish 
 print('no duplicate after joining locked roster; lap_count and finish_time persisted')
 
 # 5. She appears in the CSV export
+from scripts.export_helper import get_results_csv
 csv_resp = client.get('/api/export-race-csv')
 assert csv_resp.status_code == 200
-csv_text = csv_resp.get_data(as_text=True)
+csv_text = get_results_csv(csv_resp)
 assert pclass_uid in csv_text or late['short_name'] in csv_text, 'late sign-on missing from CSV export'
 print('late sign-on present in CSV export')
 

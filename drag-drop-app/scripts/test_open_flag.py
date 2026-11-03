@@ -95,7 +95,8 @@ open_rows = list(conn.execute(
 conn.close()
 assert len(open_rows) == 1 and open_rows[0][1] == 2, f'open start row wrong: {open_rows}'
 open_start_time, open_seq = open_rows[0]
-csv_text = client.get('/api/export-race-csv').get_data(as_text=True)
+from scripts.export_helper import get_results_csv
+csv_text = get_results_csv(client.get('/api/export-race-csv'))
 zephyr_line = next(l for l in csv_text.splitlines() if 'Zephyr' in l or zephyr_uid in l)
 assert open_start_time in zephyr_line, f'open start time missing from CSV: {zephyr_line}'
 # Sailwave import format: the open start time is the sailor's StartTime; the
