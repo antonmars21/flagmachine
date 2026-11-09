@@ -435,11 +435,14 @@ def init_finishsheet_tables():
     if 'end_time' not in race_columns:
         c.execute('ALTER TABLE races ADD COLUMN end_time TEXT')
     
+    # sail_no is deliberately NOT unique: one sailor commonly races several
+    # classes with the SAME sail number (Ilca 4/6/7 share a number). Uniqueness
+    # is per CLASS and enforced by add/edit-sailor (see migrate_sail_no_shared_across_classes).
     c.execute('''CREATE TABLE IF NOT EXISTS sailors (
         uid TEXT PRIMARY KEY,
         sailor_name TEXT,
         short_name TEXT,
-        sail_no TEXT UNIQUE,
+        sail_no TEXT,
         boat_class TEXT,
         handicap REAL,
         seed INTEGER,
@@ -536,7 +539,62 @@ def init_finishsheet_tables():
     conn.commit()
     conn.close()
 
+
+def migrate_sail_no_shared_across_classes():
+    """Kanban "check sailor editing": the old schema had `sail_no TEXT UNIQUE`,
+    but one sailor commonly races SEVERAL classes with the SAME sail number
+    (Ilca 4/6/7 share a number). Setting a second class entry to the shared
+    number (e.g. John Ilca 6 -> 224440 while John Ilca 7 already has it) died
+    with an uncaught IntegrityError (HTTP 500) and the RO saw no message - the
+    edit "could not be made". Rebuild the sailors table WITHOUT the unique
+    constraint on sail_no; duplicates within ONE class are rejected by
+    add-sailor / edit-sailor with a friendly message instead.
+
+    Idempotent: no-op when no unique index on sail_no alone exists. All rows
+    and columns are preserved (the table is rebuilt from its own PRAGMA
+    table_info, following the CREATE-new/COPY/DROP/RENAME pattern)."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sailors'")
+        if not c.fetchone():
+            return False
+        unique_sail_no = False
+        for idx in c.execute('PRAGMA index_list(sailors)').fetchall():
+            if idx['unique']:
+                icols = [r['name'] for r in
+                         c.execute('PRAGMA index_info("%s")' % idx['name']).fetchall()]
+                if icols == ['sail_no']:
+                    unique_sail_no = True
+        if not unique_sail_no:
+            return False
+        defs = []
+        for col in c.execute('PRAGMA table_info(sailors)').fetchall():
+            d = '"%s" %s' % (col['name'], col['type'] or 'TEXT')
+            if col['notnull']:
+                d += ' NOT NULL'
+            if col['dflt_value'] is not None:
+                d += ' DEFAULT %s' % col['dflt_value']
+            if col['pk']:
+                d += ' PRIMARY KEY'
+            defs.append(d)
+        c.execute('CREATE TABLE sailors_migrated (%s)' % ', '.join(defs))
+        c.execute('INSERT INTO sailors_migrated SELECT * FROM sailors')
+        c.execute('DROP TABLE sailors')
+        c.execute('ALTER TABLE sailors_migrated RENAME TO sailors')
+        conn.commit()
+        print('[schema] sailors.sail_no UNIQUE constraint removed - a sail '
+              'number may be shared across classes (Ilca 4/6/7), unique per class')
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 init_finishsheet_tables()
+migrate_sail_no_shared_across_classes()
 
 def reconcile_sailor_class_ids():
     """Re-sync sailors.class_id with boat_classes, matched by boat_class name
@@ -713,6 +771,11 @@ def get_dynamic_asset_library():
 
 app_state = {
     "master_start_time": "11:30",
+    # Kanban "Master time clock not working": when True, the RO page
+    # auto-starts the sequence when the system clock reaches master_start_time
+    # (the pre-rewrite behaviour, restored 2026-11-05 - now opt-in via the
+    # "Auto-start" checkbox next to the time input).
+    "master_start_auto": False,
     "status": "READY",
     "race_duration": "00:00:00",
     "active_grid": None,
@@ -947,9 +1010,14 @@ def update_settings():
     payload = request.get_json()
     if not payload:
         return jsonify({"status": "error", "message": "No payload provided"}), 400
-    if 'master_start_time' in payload:
-        app_state['master_start_time'] = payload['master_start_time']
-        return jsonify({"status": "success", "updated": "master_start_time"})
+    if 'master_start_time' in payload or 'master_start_auto' in payload:
+        if 'master_start_time' in payload:
+            app_state['master_start_time'] = payload['master_start_time']
+        if 'master_start_auto' in payload:
+            app_state['master_start_auto'] = bool(payload['master_start_auto'])
+        return jsonify({"status": "success",
+                        "master_start_time": app_state['master_start_time'],
+                        "master_start_auto": app_state['master_start_auto']})
     if 'card_id' in payload and 'countdown_minutes' in payload:
         card_id = payload['card_id']
         try:
@@ -1421,18 +1489,21 @@ def add_sailor():
     conn = get_db_connection()
     c = conn.cursor()
     
-    # A duplicate sail number means the sailor is almost certainly already
-    # registered (sail_no is UNIQUE). Point the RO at the existing row instead
-    # of creating a confusing duplicate.
-    c.execute('SELECT uid, short_name FROM sailors WHERE sail_no = ?', (sail_no,))
+    # A sail number must be unique WITHIN A CLASS, but one sailor may race
+    # several classes with the SAME number (common across Ilca 4/6/7) - so a
+    # duplicate only counts when the class matches too (kanban "check sailor
+    # editing": sail_no is no longer globally UNIQUE in the schema).
+    c.execute('SELECT uid, short_name FROM sailors WHERE sail_no = ? AND LOWER(boat_class) = LOWER(?)',
+              (sail_no, boat_class or ''))
     dup_sail = c.fetchone()
     if dup_sail:
         conn.close()
         return jsonify({"status": "error",
-                        "message": f"Sail number {sail_no} is already in the registry "
-                                   f"({dup_sail['short_name']}, UID {dup_sail['uid']}). Sign them on "
-                                   f"from the list instead of adding again - clear the search box "
-                                   f"if you cannot see them."}), 400
+                        "message": f"Sail number {sail_no} is already in the registry for "
+                                   f"{boat_class} ({dup_sail['short_name']}, UID {dup_sail['uid']}). "
+                                   f"Sign them on from the list instead of adding again - clear the "
+                                   f"search box if you cannot see them. (The same number in a "
+                                   f"DIFFERENT class is fine - add the other boat.)"}), 400
     
     if uid:
         c.execute('SELECT short_name FROM sailors WHERE uid = ?', (uid,))
@@ -1485,12 +1556,34 @@ def edit_sailor(uid):
     # Get-or-create the class (bugs 33/34) - see add_sailor
     class_id = ensure_boat_class_id(c, boat_class)
 
-    c.execute('''
-        UPDATE sailors
-        SET sailor_name=?, short_name=?, sail_no=?, boat_class=?, handicap=?, seed=?, class_id=?
-        WHERE uid=?
-    ''', (sailor_name, short_name, sail_no, boat_class, float(handicap or 1.0), int(seed or 0), class_id, uid))
-    conn.commit()
+    # Same rule as add-sailor: the number must be unique within the class, but
+    # MAY be shared with this sailor's other classes (Ilca 4/6/7 share a number
+    # - kanban "check sailor editing"). Reject only a same-class collision with
+    # a friendly message instead of an uncaught IntegrityError 500.
+    c.execute('SELECT uid, short_name FROM sailors WHERE sail_no = ? AND LOWER(boat_class) = LOWER(?) AND uid != ?',
+              (sail_no, boat_class or '', uid))
+    dup_sail = c.fetchone()
+    if dup_sail:
+        conn.close()
+        return jsonify({"status": "error",
+                        "message": f"Sail number {sail_no} is already used by "
+                                   f"{dup_sail['short_name']} in {boat_class}. The same number may be "
+                                   f"shared across DIFFERENT classes (e.g. Ilca 4/6/7), but not twice "
+                                   f"in one class."}), 400
+
+    try:
+        c.execute('''
+            UPDATE sailors
+            SET sailor_name=?, short_name=?, sail_no=?, boat_class=?, handicap=?, seed=?, class_id=?
+            WHERE uid=?
+        ''', (sailor_name, short_name, sail_no, boat_class, float(handicap or 1.0), int(seed or 0), class_id, uid))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        conn.close()
+        return jsonify({"status": "error",
+                        "message": f"Could not save: a database constraint rejected the change "
+                                   f"(sail number '{sail_no}'?)."}), 400
     conn.close()
     return jsonify({"status": "success"})
 

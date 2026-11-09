@@ -28,6 +28,17 @@ if not exist "%PYTHON%" (
     exit /b 1
 )
 
+REM Desktop icon (kanban "desktop icon"): make sure the "Flag Machine"
+REM desktop shortcut exists - it is created automatically on the FIRST run on
+REM each machine (e.g. the Dell), pointing at this folder's START.bat with the
+REM app icon. Later runs skip it when the .lnk is already there.
+if not exist "%USERPROFILE%\Desktop\Flag Machine.lnk" (
+    if exist "%APP_DIR%\scripts\make_desktop_shortcut.bat" (
+        echo Creating the "Flag Machine" desktop shortcut...
+        call "%APP_DIR%\scripts\make_desktop_shortcut.bat" /q
+    )
+)
+
 echo.
 echo ========================================
 echo   Flag Machine + Finish Sheet

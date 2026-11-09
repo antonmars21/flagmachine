@@ -6,7 +6,7 @@ and imports it into the Flag Machine's SQLite database (score.db).
 
 Features:
 - Validates data before import
-- Checks for duplicates (by sail_no)
+- Checks for duplicates (by sail_no within the same boat class; the same number may be shared across classes)
 - Handles upserts (update existing, insert new)
 - Preserves existing app-specific fields (racing_today, seed)
 - Maps boat classes to flag images
@@ -100,7 +100,7 @@ def ensure_tables_exist(conn):
             uid TEXT PRIMARY KEY,
             sailor_name TEXT NOT NULL,
             short_name TEXT NOT NULL,
-            sail_no TEXT UNIQUE NOT NULL,
+            sail_no TEXT NOT NULL,  -- not unique: one sail number may be shared across classes (Ilca 4/6/7)
             boat_class TEXT NOT NULL,
             handicap REAL DEFAULT 1.0,
             seed INTEGER DEFAULT 0,
@@ -130,7 +130,7 @@ def ensure_tables_exist(conn):
                     uid TEXT PRIMARY KEY,
                     sailor_name TEXT NOT NULL,
                     short_name TEXT NOT NULL,
-                    sail_no TEXT UNIQUE NOT NULL,
+                    sail_no TEXT NOT NULL,  -- not unique: one sail number may be shared across classes (Ilca 4/6/7)
                     boat_class TEXT NOT NULL,
                     handicap REAL DEFAULT 1.0,
                     seed INTEGER DEFAULT 0,
@@ -521,8 +521,11 @@ def import_sailors(conn, boats, existing_classes):
             else:
                 print(f"  [EXISTS] {uid} ({sail_no}) - {boat_info['sailor_name']}")
         else:
-            # Check for duplicate sail_no (different uid)
-            c.execute('SELECT uid FROM sailors WHERE sail_no = ?', (sail_no,))
+            # Check for duplicate sail_no (different uid) WITHIN THE SAME
+            # CLASS - the same number in a different class is the same sailor's
+            # other boat (common across Ilca 4/6/7) and is allowed.
+            c.execute('SELECT uid FROM sailors WHERE sail_no = ? AND LOWER(boat_class) = LOWER(?)',
+                      (sail_no, boat_class or ''))
             duplicate = c.fetchone()
             
             if duplicate:

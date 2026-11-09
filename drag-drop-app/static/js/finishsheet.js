@@ -1082,6 +1082,14 @@ async function handleAddSailorSubmit(e) {
     }
 }
 
+// Escape a value interpolated into an HTML attribute (names with quotes must
+// not break the edit modal's input fields).
+function escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function openEditSailorModal(sailor) {
     const existing = document.querySelector('.modal-overlay');
     if (existing) existing.remove();
@@ -1095,13 +1103,13 @@ function openEditSailorModal(sailor) {
                 <button class="close-btn" id="modal-close">✕</button>
             </div>
             <div class="modal-body">
-                <div class="form-group"><label>UID</label><input type="text" value="${sailor.uid}" readonly></div>
-                <div class="form-group"><label>Sailor Name</label><input type="text" id="edit-sailor-name" value="${sailor.sailor_name}"></div>
-                <div class="form-group"><label>Short Name</label><input type="text" id="edit-short-name" value="${sailor.short_name}"></div>
-                <div class="form-group"><label>Sail No</label><input type="text" id="edit-sail-no" value="${sailor.sail_no}"></div>
-                <div class="form-group"><label>Boat Class</label><input type="text" id="edit-boat-class" value="${sailor.boat_class}"></div>
-                <div class="form-group"><label>Handicap</label><input type="number" step="0.01" id="edit-handicap" value="${sailor.handicap}"></div>
-                <div class="form-group"><label>Seed</label><input type="number" id="edit-seed" value="${sailor.seed}"></div>
+                <div class="form-group"><label>UID</label><input type="text" value="${escAttr(sailor.uid)}" readonly></div>
+                <div class="form-group"><label>Sailor Name</label><input type="text" id="edit-sailor-name" value="${escAttr(sailor.sailor_name)}"></div>
+                <div class="form-group"><label>Short Name</label><input type="text" id="edit-short-name" value="${escAttr(sailor.short_name)}"></div>
+                <div class="form-group"><label>Sail No</label><input type="text" id="edit-sail-no" value="${escAttr(sailor.sail_no)}"></div>
+                <div class="form-group"><label>Boat Class</label><input type="text" id="edit-boat-class" value="${escAttr(sailor.boat_class)}"></div>
+                <div class="form-group"><label>Handicap</label><input type="number" step="0.01" id="edit-handicap" value="${escAttr(sailor.handicap)}"></div>
+                <div class="form-group"><label>Seed</label><input type="number" id="edit-seed" value="${escAttr(sailor.seed)}"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-submit" id="modal-save">Save</button>
@@ -1127,16 +1135,21 @@ function openEditSailorModal(sailor) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            const data = await response.json();
-            if (data.status === 'success') {
+            // A non-200 (e.g. an old server error page) must still show a
+            // message - response.json() alone would throw and leave the modal
+            // stuck open with no feedback (kanban "check sailor editing").
+            let data = null;
+            try { data = await response.json(); } catch (e) { data = null; }
+            if (response.ok && data && data.status === 'success') {
                 overlay.remove();
                 await loadRegistryList();
                 loadAndRenderSailors();
             } else {
-                alert(data.message || 'Could not save changes.');
+                alert((data && data.message) || `Could not save changes (HTTP ${response.status}).`);
             }
         } catch (error) {
             console.error("Error saving sailor:", error);
+            alert('Could not save changes - the server did not answer.');
         }
     });
     overlay.querySelector('#modal-delete').addEventListener('click', async () => {

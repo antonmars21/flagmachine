@@ -1,5 +1,5 @@
 // app.js - Dynamic start sequences support
-const state = { isRunning: false, raceStartTime: null, sequence: [], masterStartTime: "11:30" };
+const state = { isRunning: false, raceStartTime: null, sequence: [], masterStartTime: "11:30", masterStartAuto: false };
 
 // Resolve a bare flag filename to its URL (class/signal subfolders).
 // The map is injected by index.html; falls back to the legacy flat path.
@@ -433,31 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    document.getElementById('btn-start').addEventListener('click', () => {
-        if (state.isRunning || state.sequence.length === 0) return;
-        resetAudioCues();
-        state.isRunning = true;
-        state.raceStartTime = Date.now();
-        // Do NOT preset row 0's status to ACTIVE here: the flag-change
-        // announcement (bug 25) fires when the countdown tick sees a row go
-        // PENDING -> ACTIVE. Presetting it hides that transition, so the
-        // opening 'flag. Total time.' never speaks. The tick runs within
-        // 100ms and flips it anyway.
-        state.sequence[0].grid_index = state.sequence[0].grid_index || 1;
-        syncToServer();
-        fetch('/update-status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ active_id: state.sequence[0].id, grid_index: state.sequence[0].grid_index })
-        }).catch(console.error);
-        fetch('/execute-control', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'START', countdown_started_ms: state.raceStartTime })
-        }).catch(console.error);
-        updateStatusBadge('RUNNING');
-        lockUI(true);
-    });
+    document.getElementById('btn-start').addEventListener('click', startCountdown);
 
     document.getElementById('btn-stop').addEventListener('click', () => {
         state.isRunning = false;
@@ -492,7 +468,33 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStatusBadge('ENDED');
     });
 
-    document.getElementById('master-start-input').addEventListener('change', e => { state.masterStartTime = e.target.value; });
+    // Master start time + auto-start (kanban "Master time clock not working"):
+    // the server renders the stored values into the inputs; changes are pushed
+    // back via /update-settings so they survive a page reload/restart.
+    const masterStartInput = document.getElementById('master-start-input');
+    const masterStartAutoBox = document.getElementById('master-start-auto');
+    if (masterStartInput) {
+        if (masterStartInput.value) state.masterStartTime = masterStartInput.value;
+        masterStartInput.addEventListener('change', e => {
+            state.masterStartTime = e.target.value;
+            fetch('/update-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ master_start_time: state.masterStartTime })
+            }).catch(console.error);
+        });
+    }
+    if (masterStartAutoBox) {
+        state.masterStartAuto = masterStartAutoBox.checked;
+        masterStartAutoBox.addEventListener('change', e => {
+            state.masterStartAuto = e.target.checked;
+            fetch('/update-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ master_start_auto: state.masterStartAuto })
+            }).catch(console.error);
+        });
+    }
 
     // Sound on/off toggle (Feature 6) - remembered between sessions
     const soundBtn = document.getElementById('btn-sound');
@@ -712,6 +714,36 @@ function createRow(rowId, data, gridIndex) {
     return row;
 }
 
+/**
+ * Start the countdown (Start button AND the master-clock auto-start both use
+ * this, so an automatic start behaves exactly like pressing Start).
+ */
+function startCountdown() {
+    if (state.isRunning || state.sequence.length === 0) return;
+    resetAudioCues();
+    state.isRunning = true;
+    state.raceStartTime = Date.now();
+    // Do NOT preset row 0's status to ACTIVE here: the flag-change
+    // announcement (bug 25) fires when the countdown tick sees a row go
+    // PENDING -> ACTIVE. Presetting it hides that transition, so the
+    // opening 'flag. Total time.' never speaks. The tick runs within
+    // 100ms and flips it anyway.
+    state.sequence[0].grid_index = state.sequence[0].grid_index || 1;
+    syncToServer();
+    fetch('/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active_id: state.sequence[0].id, grid_index: state.sequence[0].grid_index })
+    }).catch(console.error);
+    fetch('/execute-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'START', countdown_started_ms: state.raceStartTime })
+    }).catch(console.error);
+    updateStatusBadge('RUNNING');
+    lockUI(true);
+}
+
 function updateCountdown() {
     if (!state.isRunning || !state.raceStartTime) return;
     const e = Math.floor((Date.now() - state.raceStartTime) / 1000);
@@ -818,9 +850,27 @@ function updateCountdown() {
     state.catchUpTick = false;
 }
 
+// Master-clock auto-start (kanban "Master time clock not working"): with
+// "Auto-start" ticked and a Master Start Time set, the sequence starts by
+// itself when the system clock reaches that time - the pre-rewrite behaviour
+// (the old 1s clock tick compared HH:MM against the input and fired the start).
+// Fires at most once per clock minute (lastAutoStartKey) and only while the
+// shared state is READY with a sequence built and no countdown running.
+let lastAutoStartKey = null;
 function updateClock() {
     const n = new Date(), hh = String(n.getHours()).padStart(2, '0'), mm = String(n.getMinutes()).padStart(2, '0'), ss = String(n.getSeconds()).padStart(2, '0');
     document.getElementById('live-system-clock').textContent = `${hh}:${mm}:${ss}`;
+    if (state.masterStartAuto && !state.isRunning && !state.raceStartTime
+            && state.sequence.length
+            && (!lastSyncedStatus || lastSyncedStatus === 'READY')
+            && state.masterStartTime
+            && `${hh}:${mm}` === state.masterStartTime) {
+        const key = `${n.getFullYear()}-${n.getMonth()}-${n.getDate()} ${hh}:${mm}`;
+        if (lastAutoStartKey !== key) {
+            lastAutoStartKey = key;
+            startCountdown();
+        }
+    }
 }
 
 function updateStatusBadge(st) {

@@ -6,16 +6,20 @@ REM Works from any checkout location: the shortcut always points at the
 REM START.bat sitting next to this script's parent folder.
 
 setlocal
+REM /q = quiet mode (called from START.bat/START.ps1 on first run per machine):
+REM no pause, no closing timeout - errors still exit non-zero.
+set "QUIET=0"
+if /i "%~1"=="/q" set "QUIET=1"
 for %%i in ("%~dp0..") do set "APP_DIR=%%~fi"
 
 if not exist "%APP_DIR%\START.bat" (
     echo ERROR: START.bat not found in %APP_DIR%
-    pause
+    if "%QUIET%"=="0" pause
     exit /b 1
 )
 if not exist "%APP_DIR%\static\icons\app.ico" (
     echo ERROR: app.ico not found - run scripts\make_window_icons.py first.
-    pause
+    if "%QUIET%"=="0" pause
     exit /b 1
 )
 
@@ -31,10 +35,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 if errorlevel 1 (
     echo ERROR: shortcut creation failed.
-    pause
+    if "%QUIET%"=="0" pause
     exit /b 1
 )
-echo.
-echo Done. Double-click "Flag Machine" on the desktop to launch the app
-echo (only ONE server will run, no matter how many times it is launched).
-timeout /t 3
+if "%QUIET%"=="0" (
+    echo.
+    echo Done. Double-click "Flag Machine" on the desktop to launch the app
+    echo (only ONE server will run, no matter how many times it is launched).
+    timeout /t 3
+)

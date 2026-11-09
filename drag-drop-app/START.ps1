@@ -28,6 +28,25 @@ if (-not (Test-Path "$AppDir\app.py")) {
     exit 1
 }
 
+# Desktop icon (kanban "desktop icon"): make sure the "Flag Machine" desktop
+# shortcut exists - created automatically on the FIRST run on each machine
+# (e.g. the Dell), pointing at this folder's START.bat with the app icon.
+$lnkPath = [IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Flag Machine.lnk')
+if (-not (Test-Path $lnkPath) -and (Test-Path "$AppDir\static\icons\app.ico")) {
+    try {
+        $ws = New-Object -ComObject WScript.Shell
+        $lnk = $ws.CreateShortcut($lnkPath)
+        $lnk.TargetPath = "$AppDir\START.bat"
+        $lnk.WorkingDirectory = $AppDir
+        $lnk.IconLocation = "$AppDir\static\icons\app.ico,0"
+        $lnk.Description = 'Flag Machine + Finish Sheet'
+        $lnk.Save()
+        Write-Host "Desktop shortcut created: $lnkPath" -ForegroundColor Green
+    } catch {
+        Write-Host "Could not create the desktop shortcut: $_" -ForegroundColor Yellow
+    }
+}
+
 # Check if Python exists
 if (-not (Test-Path $pythonPath)) {
     Write-Host "ERROR: Python not found at $pythonPath" -ForegroundColor Red

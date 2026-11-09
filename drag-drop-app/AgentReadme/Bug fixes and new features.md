@@ -14,6 +14,93 @@ test. Passing regression scripts alone is not enough.
 **Bugs
 
 =============================
+To Test (coded 2026-11-05, regression PASS, awaiting HUMAN browser test per process rule - Ctrl+F5 first, JS is cached)
+
+KANBAN "Master time clock not working" == CODED 2026-11-05
+PASSED ✅ HUMAN TEST 2026-11-05 (RO: "the race started on time!" - Auto-start
+ticked, fixed time set, the sequence started by itself at that time).
+The RO wants to optionally set the race to start at a fixed time (e.g. 10:45).
+Root cause: the Session-5 rewrite of app.js dropped the old auto-start - the
+original app.js compared the 1s system-clock tick against the Master Start
+Time input and fired the sequence at HH:MM; the new updateClock() only painted
+the clock, and the input's change handler never even pushed the value to the
+server (app_state['master_start_time'] stayed at the default after a restart).
+Fix:
+- index.html: "Auto-start" checkbox rendered from app_state['master_start_auto']
+  - auto-start is OPT-IN. AMENDED 2026-11-05 (RO: "align it under the time -
+  save space"): the checkbox now sits in its own cell UNDER the time input
+  (.input-group.master-start grid, .auto-start-cell at grid-column 2) instead
+  of inline next to it.
+- app.py: app_state['master_start_auto']; /update-settings accepts
+  master_start_time + master_start_auto so both survive reloads/restarts.
+- app.js: the Start button body is extracted into startCountdown() (button and
+  auto-start share it, so an automatic start is identical to pressing Start,
+  including the bug-31 countdown_started_ms resume report); updateClock() fires
+  startCountdown() when Auto-start is on, a time is set, the sequence is
+  non-empty, the shared state is READY and no countdown is running, and the
+  clock's HH:MM equals the master start time - at most once per clock minute
+  (lastAutoStartKey guard); both inputs POST to /update-settings on change.
+Regression: scripts/test_master_clock.py PASS (settings round-trip, page
+render incl. the stacked auto-start cell, app.js wiring + balance). Full suite
+25/25 PASS.
+Human test (Ctrl+F5 the RO page): build a start event, tick Auto-start, set
+the Master Start Time 1-2 minutes ahead - the sequence must start BY ITSELF at
+that time (STATE: RUNNING, countdown ticking, voice cues if Sound On). Untick
+Auto-start - it must never fire. Change the time - the new time is used and
+survives an F5. == PASSED 2026-11-05: the race started on time (RO report).
+
+KANBAN "check sailor editing" == CODED 2026-11-05
+Dell report: one sailor's details could be edited, but a second edit to a
+different sailor could not be made - the RO wanted to set John (Ilca 6) to
+sail number 224440, which John's other boat (Ilca 7) already carries. One sail
+number across Ilca 4/6/7 is normal (same sailor, several boats).
+Root causes: (1) sailors.sail_no was TEXT UNIQUE, so the second edit died with
+an uncaught sqlite3.IntegrityError -> HTTP 500; (2) the edit modal did
+`await response.json()` unconditionally - on the 500 the parse threw, the catch
+only console.error'd, so the modal stayed open with NO message and blocked any
+further edit.
+Fix:
+- migrate_sail_no_shared_across_classes() runs at app startup (next to the other
+  repairs): rebuilds the sailors table WITHOUT the UNIQUE constraint on sail_no
+  (all rows/columns preserved, idempotent). Live score.db migrated 2026-11-05
+  (backup score.db.backup-20261105-sailno; 54 sailors, uid PK intact).
+- Uniqueness is now PER CLASS: /api/add-sailor and /api/edit-sailor reject a
+  sail_no already used in the SAME class (case-insensitive) with a friendly 400
+  message; the same number in a DIFFERENT class is allowed (uid auto-suffix
+  SL-<no>-2 keeps uids unique). edit-sailor also catches IntegrityError -> 400.
+- finishsheet.js: the edit modal's save handler checks response.ok and always
+  alerts the server's message (a 500 can never silently stick the modal again);
+  field values are HTML-attribute-escaped (escAttr).
+- import_sailwave.py: fresh-DB schema matches (no UNIQUE on sail_no) and its
+  duplicate check is class-aware too.
+Regression: scripts/test_sail_no_shared.py PASS (migration rebuild + idempotent,
+cross-class share allowed, same-class collision -> friendly 400 with the row
+unchanged, back-to-back edits to different sailors both succeed, JS checks).
+Full suite 25/25 PASS.
+Human test (Ctrl+F5 a finish sheet on the Dell): open Sailor Registry, edit
+John Ilca 7 -> sail no 224440, Save (must succeed); edit John Ilca 6 -> sail
+no 224440, Save (MUST succeed - this was the failing second edit); try to set
+a third sailor in Ilca 6 to 224440 -> a clear message must appear, not a stuck
+modal.
+
+KANBAN "desktop icon" (small fix, for the Dell) == CODED 2026-11-05
+The "Flag Machine" desktop shortcut existed only on the Windows laptop (made
+manually 2026-10-29). Both launchers now ENSURE it on every run: START.bat calls
+scripts\make_desktop_shortcut.bat /q when %USERPROFILE%\Desktop\Flag Machine.lnk
+is missing; START.ps1 creates the .lnk inline (WScript.Shell) under the same
+condition - before the server/windows are launched. The first START.bat run on
+the Dell creates the desktop icon automatically, pointing at that machine's own
+START.bat (the installer resolves APP_DIR from its own location) with the
+app.ico pennant icon. make_desktop_shortcut.bat gained a /q quiet mode (no
+pause/closing timeout) so launchers are not held up; run by hand it still shows
+the instructions.
+Regression: scripts/test_desktop_icon.py PASS (both launchers ensure the .lnk
+before launching, /q quiet mode, app.ico valid PNG-in-ICO). Full suite 25/25
+PASS; test_navigation.py still PASS.
+Human test (on the Dell): run START.bat once -> "Flag Machine" icon appears on
+the desktop; double-click it -> the app launches (one server, the four windows).
+
+=============================
 in progress
 
 Bugs to fix:

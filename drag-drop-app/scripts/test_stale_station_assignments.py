@@ -32,6 +32,8 @@ conn = sqlite3.connect(SCRATCH)
 seed_fixture_sailors(conn)
 conn.commit()
 
+# Hermetic fixture: drop rows copied from the live DB so the cleared count is deterministic
+conn.execute("DELETE FROM class_station_assignments")
 # Simulate stale toggles from a previous day: Ilca 6 + Open pinned to station 2
 conn.execute("INSERT OR REPLACE INTO class_station_assignments (class_key, station, updated_at) VALUES ('c1', 2, '2026-10-20 10:00:00')")
 conn.execute("INSERT OR REPLACE INTO class_station_assignments (class_key, station, updated_at) VALUES ('open', 2, '2026-10-20 10:00:00')")

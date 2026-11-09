@@ -16,9 +16,13 @@
         </div>
         
         <div class="control-actions">
-            <div class="input-group">
+            <div class="input-group master-start">
                 <label for="master-start-input">Master Start Time:</label>
                 <input type="time" id="master-start-input" value="{{ state.master_start_time }}">
+                <div class="auto-start-cell">
+                    <input type="checkbox" id="master-start-auto" {% if state.master_start_auto %}checked{% endif %}>
+                    <label for="master-start-auto" title="Start the sequence automatically when the system clock reaches the master start time">Auto-start</label>
+                </div>
             </div>
             
             <button id="btn-start" class="btn btn-green">⚡ Start</button>

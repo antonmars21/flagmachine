@@ -68,6 +68,36 @@ body {
     font-weight: 600;
 }
 
+/* Master start time: 2-row grid - label + time on row 1, the Auto-start
+   checkbox tucked UNDER the time input on row 2 to save header width */
+.input-group.master-start {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    gap: 2px 10px;
+}
+
+.input-group.master-start .auto-start-cell {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.input-group.master-start .auto-start-cell label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+#master-start-auto {
+    width: 18px;
+    height: 18px;
+    accent-color: #f59e0b;
+    cursor: pointer;
+}
+
 #master-start-input {
     background: #0f172a;
     border: 1px solid var(--border-pending);
