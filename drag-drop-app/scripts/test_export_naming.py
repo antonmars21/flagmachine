@@ -144,7 +144,10 @@ def export(rid):
     # never a ZIP (the series template is its own endpoint)
     assert 'zip' not in ct, f'export must never be a ZIP, got {ct}'
     disp = resp.headers.get('Content-Disposition', '')
-    fname = re.search(r'filename=([^;]+)', disp).group(1).strip()
+    # filename must be quoted (series names contain spaces/parens; unquoted is
+    # invalid per RFC 6266 and Brave rejects the download - 2026-11-09 test)
+    assert re.search(r'filename="[^"]+\.csv"', disp), f'filename must be quoted: {disp}'
+    fname = re.search(r'filename="?([^";]+)"?', disp).group(1).strip()
     assert fname.endswith('.csv'), fname
     body = resp.get_data().decode('utf-8')
     race_cell = body.splitlines()[1].split(',')[6]
@@ -185,8 +188,8 @@ assert resp.status_code == 200, resp.get_data(as_text=True)
 assert 'zip' not in resp.headers.get('Content-Type', '')
 assert 'RaceNo' in resp.get_data(as_text=True), 'template must carry Sailwave RaceNo column'
 resp = client.get(f'/api/export-series-template?race_id={no_event_race}')
-assert resp.status_code == 404, 'no series on a non-calendar date -> 404, results CSV only'
-print('series template is a separate plain-CSV download (404 when no series)')
+assert resp.status_code == 204, 'no series on a non-calendar date -> 204, results CSV only'
+print('series template is a separate plain-CSV download (204 when no series)')
 
 # Dell scenario: no calendar in the Sailwave folder -> app-folder fallback
 # (the calendar ships with the app now)

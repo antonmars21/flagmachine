@@ -82,7 +82,11 @@ assert resp.status_code == 200, resp.get_data(as_text=True)
 ct = resp.headers.get('Content-Type', '')
 assert 'zip' not in ct and 'text/csv' in ct, f'must be plain CSV, got {ct}'
 disp = resp.headers.get('Content-Disposition', '')
-fname = re.search(r'filename=([^;]+)', disp).group(1).strip()
+# filename must be QUOTED - series names contain spaces/parens, and an
+# unquoted filename is invalid per RFC 6266: Brave rejects the header and the
+# download fails (2026-11-09 human test)
+assert re.search(r'filename="[^"]+\.csv"', disp), f'filename must be quoted: {disp}'
+fname = re.search(r'filename="?([^";]+)"?', disp).group(1).strip()
 assert fname == 'Test Series club racing R2 28-10-2026.csv', fname
 body = get_results_csv(resp)
 assert body.splitlines()[1].split(',')[6] == 'Race 2', 'series race number'
@@ -94,14 +98,14 @@ m.app_state['race_id'] = None
 resp = client.get('/api/export-race-csv')
 assert resp.status_code == 200, f'export after reset must fall back to last race, got {resp.status_code} {resp.get_data(as_text=True)}'
 assert 'text/csv' in resp.headers.get('Content-Type', '')
-fname = re.search(r'filename=([^;]+)', resp.headers.get('Content-Disposition', '')).group(1).strip()
+fname = re.search(r'filename="?([^";]+)"?', resp.headers.get('Content-Disposition', '')).group(1).strip()
 assert fname == f'race_{race_plain}_results.csv', fname  # newest race
 print(f'PASS: after reset, export falls back to the last race: {fname}')
 
 # --- 3. ?race_id= exports an older race (amendment flow) -------------------
 resp = client.get(f'/api/export-race-csv?race_id={race_old}')
 assert resp.status_code == 200
-fname = re.search(r'filename=([^;]+)', resp.headers.get('Content-Disposition', '')).group(1).strip()
+fname = re.search(r'filename="?([^";]+)"?', resp.headers.get('Content-Disposition', '')).group(1).strip()
 assert fname == 'Test Series club racing 21-10-2026.csv', fname
 assert get_results_csv(resp).splitlines()[1].split(',')[6] == 'Race 1'
 resp = client.get('/api/export-race-csv?race_id=999999')
@@ -114,8 +118,8 @@ assert resp.status_code == 200 and 'text/csv' in resp.headers.get('Content-Type'
 assert 'RaceNo' in resp.get_data(as_text=True)
 assert 'Test Series club racing' in resp.get_data(as_text=True)
 resp = client.get(f'/api/export-series-template?race_id={race_plain}')
-assert resp.status_code == 404, 'no series on a non-calendar date -> 404'
-print('PASS: /api/export-series-template returns the template CSV alone (404 without a series)')
+assert resp.status_code == 204, 'no series on a non-calendar date -> 204 silent no-op (no junk download)'
+print('PASS: /api/export-series-template returns the template CSV alone (204 without a series)')
 
 # --- 5. /api/races lists past races for the multi-select --------------------
 resp = client.get('/api/races')

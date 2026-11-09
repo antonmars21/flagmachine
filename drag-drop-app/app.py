@@ -2229,7 +2229,12 @@ def export_race_csv():
     return Response(
         csv_data,
         mimetype='text/csv',
-        headers={'Content-Disposition': f'attachment; filename={filename}'}
+        # Quote the filename: series names contain spaces/parens, and an
+        # unquoted filename is not a valid RFC 6266 token - Brave/Chrome then
+        # reject the header and the download fails (2026-11-09 human test:
+        # series races failed with "Check Internet connection", no-series
+        # races with plain race_<id>_results.csv names worked).
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
     )
 
 
@@ -2248,15 +2253,17 @@ def export_series_template():
     race_date = _race_date(race_id)
     regatta = get_calendar_event_for_date(race_date)
     if not regatta:
-        return jsonify({"status": "error",
-                        "message": "No calendar series on this race date - no template"}), 404
+        # 204 (not a 404 JSON body): the End Race auto-download fires this
+        # unconditionally, and an error body would be saved as a junk
+        # "export-series-template" download. 204 = silent no-op.
+        return '', 204
     series_csv, series_filename = build_series_template_csv(regatta, race_id)
     if not series_csv or not series_filename:
         return jsonify({"status": "error", "message": "Could not build the series template"}), 500
     return Response(
         series_csv,
         mimetype='text/csv',
-        headers={'Content-Disposition': f'attachment; filename={series_filename}'}
+        headers={'Content-Disposition': f'attachment; filename="{series_filename}"'}
     )
 
 

@@ -141,6 +141,15 @@ a[download] anchor clicks inside the click handler (triggerDownload), which
 keeps the user activation; server Content-Disposition names the file.
 Regression: test_export_workflow.py JS-wiring checks updated (no
 URL.createObjectURL, triggerDownload present). Full suite 27/27 PASS.
+HUMAN TEST 2026-11-09 (RO, download history): series-dated races failed with
+"Check Internet connection" while no-series races (race_<id>_results.csv)
+downloaded fine. Root cause: series filenames contain spaces/parens and were
+sent UNQUOTED in Content-Disposition - invalid per RFC 6266, so Brave
+rejected the header and failed the download. Fix: filename is now quoted
+(filename="..."). Also: /api/export-series-template returns 204 (silent
+no-op) when the race date has no series, so the End Race auto-download no
+longer saves a junk error-body file. Regression: quoted-header assertions in
+test_export_workflow.py / test_export_naming.py; 204 assertion. Suite 27/27.
 KNOWN MINOR FLAW (RO 2026-11-09, deliberately left): editing a sailor who is
 ticked racing_today during a race can drop them from the race roster - do not
 "fix" the edit flow for this now; revisit as its own card.
