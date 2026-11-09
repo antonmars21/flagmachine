@@ -3,23 +3,17 @@ const state = { isRunning: false, raceStartTime: null, sequence: [], masterStart
 
 // Resolve a bare flag filename to its URL (class/signal subfolders).
 // The map is injected by index.html; falls back to the legacy flat path.
-// Download a URL as a file without navigating away (used for the End Race
-// auto-export). Returns true on success, false on a non-200 (e.g. the series
-// template 404s when the race date has no calendar series).
-async function downloadBlob(url) {
-    const resp = await fetch(url);
-    if (!resp.ok) return false;
-    const blob = await resp.blob();
-    const disp = resp.headers.get('Content-Disposition') || '';
-    const m = /filename=([^;]+)/.exec(disp);
-    const name = m ? m[1].trim() : url.split('?')[0].split('/').pop() + '.csv';
+// Trigger a download without navigating away, keeping the click's user
+// activation (synchronous a[download].click(); the fetch->blob->click after
+// an await was silently blocked by Chrome/Brave as an "automatic" download).
+// The server's Content-Disposition names the file.
+function triggerDownload(url) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
+    a.href = url;
+    a.download = '';
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    return true;
+    a.remove();
 }
 
 function flagUrl(name) {
@@ -489,8 +483,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const resp = await fetch('/api/end-race', { method: 'POST' });
             const data = await resp.json();
             if (data.status === 'success' && data.race_id) {
-                await downloadBlob(`/api/export-race-csv?race_id=${data.race_id}`);
-                await downloadBlob(`/api/export-series-template?race_id=${data.race_id}`);
+                triggerDownload(`/api/export-race-csv?race_id=${data.race_id}`);
+                triggerDownload(`/api/export-series-template?race_id=${data.race_id}`);
             }
         } catch (e) {
             console.error('Auto export after End Race failed:', e);

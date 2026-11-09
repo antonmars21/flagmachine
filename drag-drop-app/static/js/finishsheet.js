@@ -644,8 +644,8 @@ async function endRace() {
                 // files (results CSV + series template when the date has a
                 // series) - plain CSVs, never a ZIP.
                 try {
-                    await downloadBlob(`/api/export-race-csv?race_id=${data.race_id}`);
-                    await downloadBlob(`/api/export-series-template?race_id=${data.race_id}`);
+                    triggerDownload(`/api/export-race-csv?race_id=${data.race_id}`);
+                    triggerDownload(`/api/export-series-template?race_id=${data.race_id}`);
                 } catch (e) {
                     console.error('Auto export after End Race failed:', e);
                 }
@@ -669,24 +669,22 @@ async function endRace() {
 }
 
 /**
- * Download a URL as a file (blob + a[download]) without navigating away from
- * the sheet. Returns true on success; false (no download) on a non-200 - e.g.
- * the series template 404s when the race date has no calendar series.
+ * Trigger a download WITHOUT navigating away and WITHOUT losing the click's
+ * user activation: a synchronous a[download].click() on the (same-origin,
+ * attachment) URL. The earlier fetch->blob->click() version ran after an
+ * await, so Chrome/Brave treated it as an automatic download and silently
+ * blocked it once the site had already auto-downloaded at End Race.
+ * The server's Content-Disposition names the file (a.download = '' defers
+ * to it). Synchronous is deliberate - call from a click handler, not after
+ * an await.
  */
-async function downloadBlob(url) {
-    const resp = await fetch(url);
-    if (!resp.ok) return false;
-    const blob = await resp.blob();
-    const disp = resp.headers.get('Content-Disposition') || '';
-    const m = /filename=([^;]+)/.exec(disp);
-    const name = m ? m[1].trim() : url.split('?')[0].split('/').pop() + '.csv';
+function triggerDownload(url) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
+    a.href = url;
+    a.download = '';
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    return true;
+    a.remove();
 }
 
 /**
@@ -732,21 +730,21 @@ async function exportRaceCsv() {
         </div>`;
     document.body.appendChild(overlay);
     overlay.querySelector('#export-close').addEventListener('click', () => overlay.remove());
-    overlay.querySelector('#export-download').addEventListener('click', async () => {
+    overlay.querySelector('#export-download').addEventListener('click', () => {
         const cbs = [...overlay.querySelectorAll('.export-race-cb:checked')];
         if (!cbs.length) { alert('Tick at least one race to export.'); return; }
         const byId = Object.fromEntries(races.map(r => [String(r.race_id), r]));
-        let failed = 0;
+        // Synchronous anchor clicks: stay inside this click's user activation
+        // so the browser does not block the downloads as "automatic" (the
+        // fetch->blob->click after an await was silently blocked).
         for (const cb of cbs) {
             const rid = cb.value;
-            const ok = await downloadBlob(`/api/export-race-csv?race_id=${rid}`);
-            if (!ok) failed++;
+            triggerDownload(`/api/export-race-csv?race_id=${rid}`);
             if (byId[rid] && byId[rid].series) {
-                await downloadBlob(`/api/export-series-template?race_id=${rid}`);
+                triggerDownload(`/api/export-series-template?race_id=${rid}`);
             }
         }
         overlay.remove();
-        if (failed) alert(`${failed} export(s) failed - check the server log.`);
     });
 }
 

@@ -132,6 +132,18 @@ Human test (Ctrl+F5): end a race -> both CSVs download automatically (results
 CSV + *_series_template.csv on a series day); Export CSV -> tick an older race
 -> its CSV downloads; after Reset Finish Sheet, Export CSV still downloads
 the just-finished race.
+HUMAN TEST 2026-11-09 (RO): End Race auto-download PASS; sailor edit Save PASS;
+export multi-select modal opened and ticked but the Download button saved
+nothing - the fetch->blob->a.click() ran after an await, so Chrome/Brave
+classified it as an automatic download and silently blocked it (the site had
+already auto-downloaded at End Race). Fixed: downloads are now SYNCHRONOUS
+a[download] anchor clicks inside the click handler (triggerDownload), which
+keeps the user activation; server Content-Disposition names the file.
+Regression: test_export_workflow.py JS-wiring checks updated (no
+URL.createObjectURL, triggerDownload present). Full suite 27/27 PASS.
+KNOWN MINOR FLAW (RO 2026-11-09, deliberately left): editing a sailor who is
+ticked racing_today during a race can drop them from the race roster - do not
+"fix" the edit flow for this now; revisit as its own card.
 
 KANBAN "record to get edit" (edits must stick after a race) == CODED 2026-11-09 (server-side proof)
 The 2026-11-05 sailor-editing fixes (per-class sail_no uniqueness, modal

@@ -145,8 +145,10 @@ print('PASS: empty race history -> 400 JSON "No race to export"')
 with open(os.path.join(ROOT, 'static', 'js', 'finishsheet.js'), encoding='utf-8') as f:
     fs = f.read()
 assert "fetch('/api/races')" in fs, 'export modal must load the race list'
-assert 'downloadBlob' in fs and '/api/export-race-csv?race_id=' in fs, 'export must download per selected race'
+assert 'triggerDownload' in fs and '/api/export-race-csv?race_id=' in fs, 'export must download per selected race'
 assert "window.location.href = '/api/export-race-csv'" not in fs, 'no more plain navigation export'
+# downloads must be synchronous anchor clicks (user activation), not fetch->blob after an await
+assert 'URL.createObjectURL' not in fs, 'blob downloads get blocked as automatic - use sync a[download] clicks'
 end = fs[fs.index('async function endRace'):]
 end = end[:end.index('\n}\n')]
 assert '/api/export-race-csv?race_id=' in end and '/api/export-series-template?race_id=' in end, \
@@ -154,9 +156,10 @@ assert '/api/export-race-csv?race_id=' in end and '/api/export-series-template?r
 assert fs.count('{') == fs.count('}'), 'finishsheet.js brace imbalance'
 with open(os.path.join(ROOT, 'static', 'js', 'app.js'), encoding='utf-8') as f:
     ajs = f.read()
-assert 'downloadBlob' in ajs and '/api/export-series-template?race_id=' in ajs, 'RO End Race must auto-download'
+assert 'triggerDownload' in ajs and '/api/export-series-template?race_id=' in ajs, 'RO End Race must auto-download'
+assert 'URL.createObjectURL' not in ajs, 'app.js must use sync anchor clicks too'
 assert ajs.count('{') == ajs.count('}'), 'app.js brace imbalance'
-print('PASS: finishsheet.js + app.js wiring (multi-select export, End Race auto-download, no ZIP path)')
+print('PASS: finishsheet.js + app.js wiring (multi-select export, End Race auto-download, sync downloads, no ZIP path)')
 
 shutil.rmtree(tempdir)
 os.remove(SCRATCH)
