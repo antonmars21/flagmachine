@@ -639,6 +639,16 @@ async function endRace() {
             const data = await response.json();
             if (data.status !== 'success') {
                 alert(data.message || 'Could not end race.');
+            } else if (data.race_id) {
+                // Kanban "export to csv failed": End Race auto-downloads both
+                // files (results CSV + series template when the date has a
+                // series) - plain CSVs, never a ZIP.
+                try {
+                    await downloadBlob(`/api/export-race-csv?race_id=${data.race_id}`);
+                    await downloadBlob(`/api/export-series-template?race_id=${data.race_id}`);
+                } catch (e) {
+                    console.error('Auto export after End Race failed:', e);
+                }
             }
         }
         
@@ -659,10 +669,85 @@ async function endRace() {
 }
 
 /**
- * Export the current race to CSV (class, sailor, start time, laps, end time)
+ * Download a URL as a file (blob + a[download]) without navigating away from
+ * the sheet. Returns true on success; false (no download) on a non-200 - e.g.
+ * the series template 404s when the race date has no calendar series.
  */
-function exportRaceCsv() {
-    window.location.href = '/api/export-race-csv';
+async function downloadBlob(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) return false;
+    const blob = await resp.blob();
+    const disp = resp.headers.get('Content-Disposition') || '';
+    const m = /filename=([^;]+)/.exec(disp);
+    const name = m ? m[1].trim() : url.split('?')[0].split('/').pop() + '.csv';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    return true;
+}
+
+/**
+ * Export races to CSV (kanban "export to csv failed"): multi-select list of
+ * previous races (name/date/race number from /api/races) so older results can
+ * be re-exported for amendment in Sailwave. Each selected race downloads its
+ * results CSV, plus the series-template CSV when its date has a series.
+ */
+async function exportRaceCsv() {
+    let races = [];
+    try {
+        const r = await fetch('/api/races');
+        const d = await r.json();
+        if (d.status === 'success') races = d.races;
+    } catch (e) {
+        console.error('Error loading race list:', e);
+    }
+    if (!races.length) {
+        alert('No races recorded yet - nothing to export.');
+        return;
+    }
+
+    const existing = document.querySelector('.modal-overlay');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Export races to CSV</h3>
+                <button class="close-btn" id="export-close">✕</button>
+            </div>
+            <div class="modal-body" style="max-height: 50vh; overflow: auto;">
+                ${races.map(r => `
+                    <label style="display: flex; gap: 8px; align-items: center; padding: 4px 0;">
+                        <input type="checkbox" class="export-race-cb" value="${r.race_id}" ${r.race_id === state.race_id ? 'checked' : ''}>
+                        <span>${escAttr(r.label)}${r.status === 'RUNNING' ? ' (running)' : ''}</span>
+                    </label>`).join('')}
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-submit" id="export-download">Download selected</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#export-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#export-download').addEventListener('click', async () => {
+        const cbs = [...overlay.querySelectorAll('.export-race-cb:checked')];
+        if (!cbs.length) { alert('Tick at least one race to export.'); return; }
+        const byId = Object.fromEntries(races.map(r => [String(r.race_id), r]));
+        let failed = 0;
+        for (const cb of cbs) {
+            const rid = cb.value;
+            const ok = await downloadBlob(`/api/export-race-csv?race_id=${rid}`);
+            if (!ok) failed++;
+            if (byId[rid] && byId[rid].series) {
+                await downloadBlob(`/api/export-series-template?race_id=${rid}`);
+            }
+        }
+        overlay.remove();
+        if (failed) alert(`${failed} export(s) failed - check the server log.`);
+    });
 }
 
 /**

@@ -225,15 +225,27 @@ def _parse_calendar_time(val):
     return None
 
 
+_CALENDAR_EVENTS_CACHE = {}
+
+
 def _calendar_events_by_date(calendar_path=None):
     """date -> event name for EVERY racing date in the calendar. Same rules
     as the single-date lookup: non-racing rows are skipped, and the latest
     start-time row of a day wins (Wednesday rule: the 18:00 Twilight row
     beats any earlier row of the same day). One xlsx parse for all dates,
-    so series race numbering can look up every race with one read."""
+    so series race numbering can look up every race with one read.
+    Cached per (path, mtime) so /api/races does not re-parse the workbook
+    once per race."""
     path = calendar_path or find_calendar_file()
     if not path or not os.path.exists(path):
         return {}
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    key = (path, mtime)
+    if key in _CALENDAR_EVENTS_CACHE:
+        return _CALENDAR_EVENTS_CACHE[key]
     events = {}
     current_date = None  # empty date cells inherit the previous row's date
     for date_text, time_text, event in _xlsx_rows(path):
@@ -253,7 +265,9 @@ def _calendar_events_by_date(calendar_path=None):
         # latest start time wins (None = no usable time, always loses)
         if prev is None or (t is not None and (prev[1] is None or t > prev[1])):
             events[current_date] = (ev, t)
-    return {d: ev for d, (ev, t) in events.items()}
+    result = {d: ev for d, (ev, t) in events.items()}
+    _CALENDAR_EVENTS_CACHE[key] = result
+    return result
 
 
 def _calendar_racing_dates(calendar_path=None):
@@ -2023,6 +2037,27 @@ def build_series_template_csv(series_name, current_race_id):
     return out.getvalue(), filename
 
 
+def _resolve_export_race_id(requested=None):
+    """Which race an export targets: explicit ?race_id= wins; then the active
+    race in memory; then the LAST recorded race in the DB. The fallback fixes
+    "export failed" after End Race + Reset Finish Sheet (reset clears the
+    in-memory race_id, but the RO still wants the just-finished race's CSV -
+    the endpoint has always been documented as 'current/last race')."""
+    conn = get_db_connection()
+    try:
+        if requested:
+            row = conn.execute('SELECT race_id FROM races WHERE race_id = ?',
+                               (requested,)).fetchone()
+            return row['race_id'] if row else None
+        race_id = app_state.get('race_id')
+        if race_id:
+            return race_id
+        row = conn.execute('SELECT race_id FROM races ORDER BY race_id DESC LIMIT 1').fetchone()
+        return row['race_id'] if row else None
+    finally:
+        conn.close()
+
+
 @app.route('/api/export-race-csv')
 def export_race_csv():
     """Export current/last race as CSV for DIRECT SAILWAVE IMPORT (features
@@ -2033,12 +2068,14 @@ def export_race_csv():
     the HYC race calendar by the race date (Wednesdays: the Twilight race
     only, from 6pm); without a calendar match it falls back to
     race_<id>_results.csv. ?format=detailed keeps the legacy human-readable
-    layout for the club's own record keeping."""
+    layout for the club's own record keeping. ?race_id=N exports a specific
+    past race. ALWAYS a plain CSV download - never a ZIP (kanban "export to
+    csv failed"); the series template is its own endpoint."""
     import csv
     import io
     from flask import Response
-    
-    race_id = app_state.get('race_id')
+
+    race_id = _resolve_export_race_id(request.args.get('race_id', type=int))
     if not race_id:
         return jsonify({"status": "error", "message": "No race to export"}), 400
     
@@ -2184,32 +2221,71 @@ def export_race_csv():
     
     csv_data = output.getvalue()
 
-    # Kanban: "make 2 files" - package the results CSV together with a
-    # series-template CSV (all races of this series from the HYC calendar,
-    # Sailwave race-results import fields RaceNo/RaceName/PublishedRaceDate/
-    # PublishedRaceTime) so the RO gets both in one download as a ZIP.
-    # ?format=detailed keeps the single legacy CSV (club record keeping).
-    if request.args.get('format') != 'detailed' and regatta:
-        series_csv, series_filename = build_series_template_csv(regatta, race_id)
-        if series_csv and series_filename:
-            import zipfile
-            zip_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr(filename, csv_data)
-                zf.writestr(series_filename, series_csv)
-            zip_buf.seek(0)
-            zip_name = re.sub(r'\.csv$', '', filename) + '.zip'
-            return Response(
-                zip_buf.getvalue(),
-                mimetype='application/zip',
-                headers={'Content-Disposition': f'attachment; filename={zip_name}'}
-            )
-
+    # Kanban "export to csv failed": the results CSV is ALWAYS returned as a
+    # plain .csv download - never packaged in a ZIP (the RO imports/publishes
+    # it directly). The series-template CSV is a separate download:
+    # /api/export-series-template. ?format=detailed keeps the legacy
+    # human-readable layout for the club's own record keeping.
     return Response(
         csv_data,
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+
+@app.route('/api/export-series-template')
+def export_series_template():
+    """The second of the "both files" pair as its OWN CSV download (never
+    ZIPped together with the results - kanban "export to csv failed"):
+    the Sailwave series-import template (RaceNo, RaceName, PublishedRaceDate,
+    PublishedRaceTime) for the series the race belongs to. 404 when the
+    race's date has no calendar series - the caller then downloads only the
+    results CSV."""
+    from flask import Response
+    race_id = _resolve_export_race_id(request.args.get('race_id', type=int))
+    if not race_id:
+        return jsonify({"status": "error", "message": "No race to export"}), 400
+    race_date = _race_date(race_id)
+    regatta = get_calendar_event_for_date(race_date)
+    if not regatta:
+        return jsonify({"status": "error",
+                        "message": "No calendar series on this race date - no template"}), 404
+    series_csv, series_filename = build_series_template_csv(regatta, race_id)
+    if not series_csv or not series_filename:
+        return jsonify({"status": "error", "message": "Could not build the series template"}), 500
+    return Response(
+        series_csv,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={series_filename}'}
+    )
+
+
+@app.route('/api/races')
+def list_races():
+    """Races for the export multi-select (kanban "export to csv failed": pick
+    older race names/dates/numbers for amendment in Sailwave). Newest first."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT race_id, start_time, end_time, status FROM races ORDER BY race_id DESC LIMIT 100')
+    rows = c.fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        rid = r['race_id']
+        race_date = _race_date(rid)
+        series = get_calendar_event_for_date(race_date) or ''
+        number = _series_race_number(rid) or _race_ordinal_of_day(rid, race_date)
+        label = f'Race {number} - {series or "no series"} - {race_date.strftime("%d-%m-%Y")} (#{rid})'
+        out.append({
+            'race_id': rid,
+            'status': r['status'],
+            'date': race_date.isoformat(),
+            'end_time': r['end_time'],
+            'series': series,
+            'race_number': number,
+            'label': label,
+        })
+    return jsonify({"status": "success", "races": out})
 
 def _update_sailor_code(c, race_id, uid):
     """Recompute and store the Sailwave result code for one race_sailors row

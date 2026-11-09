@@ -101,6 +101,53 @@ Human test (on the Dell): run START.bat once -> "Flag Machine" icon appears on
 the desktop; double-click it -> the app launches (one server, the four windows).
 
 =============================
+To Test (coded 2026-11-09, regression PASS, awaiting HUMAN browser test per process rule - Ctrl+F5 first, JS is cached)
+
+KANBAN "Bug - export to csv failed" == CODED 2026-11-09
+Symptoms: on a calendar-matched race day (Wednesdays) the Export CSV button
+delivered a ZIP, not a CSV - the RO's Sailwave import/publish flow broke
+("previously working" before the two-file ZIP change). And after End Race +
+Reset Finish Sheet the export 400'd with a raw JSON error page, because the
+reset clears the in-memory race_id and the endpoint only looked there.
+Fix:
+- /api/export-race-csv ALWAYS returns a plain .csv download - never a ZIP.
+  The series-template CSV moved to its own endpoint /api/export-series-template
+  (404 when the race date has no calendar series).
+- Race resolution: ?race_id=N wins, then the active race, then the LAST
+  recorded race in the DB - so export works after End Race + Reset too.
+- New /api/races lists past races (series, date, race number, #id) for the
+  export multi-select; the Export CSV button now opens a tick-list of races
+  (current race pre-ticked) and downloads each selected race's results CSV
+  (+ series template when it has one) - older results can be re-exported for
+  amendment in Sailwave.
+- End Race (finish sheet AND RO page) auto-downloads both files for the ended
+  race, best-effort.
+- Calendar lookups are cached per (path, mtime) so /api/races does not
+  re-parse the workbook once per race.
+Regression: scripts/test_export_workflow.py PASS (fallback after reset,
+plain-CSV-only, ?race_id=, template endpoint, /api/races, empty-DB 400, JS
+wiring); test_export_naming.py updated + PASS; test_export_csv.py PASS.
+Full suite 27/27 PASS.
+Human test (Ctrl+F5): end a race -> both CSVs download automatically (results
+CSV + *_series_template.csv on a series day); Export CSV -> tick an older race
+-> its CSV downloads; after Reset Finish Sheet, Export CSV still downloads
+the just-finished race.
+
+KANBAN "record to get edit" (edits must stick after a race) == CODED 2026-11-09 (server-side proof)
+The 2026-11-05 sailor-editing fixes (per-class sail_no uniqueness, modal
+response.ok guard) were only on the LED branch, never on main - the Dell ran
+old code with UNIQUE(sail_no) + the stuck modal, which matches the report
+"first edit saves, following edits don't". Ported to main in f3a08a1.
+Regression: scripts/test_edit_after_race.py PASS (full race flow -> end ->
+reset -> sail-no edit sticks in registry + DB; back-to-back edits stick;
+Ilca 6/7 share one number; same-class collision -> friendly 400; export still
+works afterwards). Full suite 27/27 PASS.
+Human test (Dell, after git pull to f3a08a1+, Ctrl+F5): run a race, end it,
+then in Sailor Registry change Rob's sail no and Save - must stick; a second
+sailor's edit right after must also stick; same number in Ilca 6 and Ilca 7
+must both save.
+
+=============================
 in progress
 
 Bugs to fix:

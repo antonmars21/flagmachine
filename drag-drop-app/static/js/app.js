@@ -3,6 +3,25 @@ const state = { isRunning: false, raceStartTime: null, sequence: [], masterStart
 
 // Resolve a bare flag filename to its URL (class/signal subfolders).
 // The map is injected by index.html; falls back to the legacy flat path.
+// Download a URL as a file without navigating away (used for the End Race
+// auto-export). Returns true on success, false on a non-200 (e.g. the series
+// template 404s when the race date has no calendar series).
+async function downloadBlob(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) return false;
+    const blob = await resp.blob();
+    const disp = resp.headers.get('Content-Disposition') || '';
+    const m = /filename=([^;]+)/.exec(disp);
+    const name = m ? m[1].trim() : url.split('?')[0].split('/').pop() + '.csv';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    return true;
+}
+
 function flagUrl(name) {
     if (!name) return '';
     const map = window.FLAG_URL_MAP || {};
@@ -460,11 +479,22 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStatusBadge('READY');
     });
 
-    document.getElementById('btn-end-race').addEventListener('click', () => {
+    document.getElementById('btn-end-race').addEventListener('click', async () => {
         state.isRunning = false;
         lockUI(false);
         fetch('/execute-control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'END_RACE' }) }).catch(console.error);
-        fetch('/api/end-race', { method: 'POST' }).catch(console.error);
+        // Kanban "export to csv failed": End Race auto-downloads both files
+        // (results CSV + series template when the date has a series).
+        try {
+            const resp = await fetch('/api/end-race', { method: 'POST' });
+            const data = await resp.json();
+            if (data.status === 'success' && data.race_id) {
+                await downloadBlob(`/api/export-race-csv?race_id=${data.race_id}`);
+                await downloadBlob(`/api/export-series-template?race_id=${data.race_id}`);
+            }
+        } catch (e) {
+            console.error('Auto export after End Race failed:', e);
+        }
         updateStatusBadge('ENDED');
     });
 

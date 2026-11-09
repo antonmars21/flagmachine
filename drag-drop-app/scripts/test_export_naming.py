@@ -135,28 +135,18 @@ client = m.app.test_client()
 
 
 def export(rid):
-    import zipfile
-    import io as _io
     m.app_state['race_id'] = rid
     m.app_state['race_ended'] = True
     resp = client.get('/api/export-race-csv')
     assert resp.status_code == 200, resp.get_data(as_text=True)
+    ct = resp.headers.get('Content-Type', '')
+    # kanban "export to csv failed": the results export is ALWAYS a plain CSV,
+    # never a ZIP (the series template is its own endpoint)
+    assert 'zip' not in ct, f'export must never be a ZIP, got {ct}'
     disp = resp.headers.get('Content-Disposition', '')
     fname = re.search(r'filename=([^;]+)', disp).group(1).strip()
-    ct = resp.headers.get('Content-Type', '')
-    raw = resp.get_data()
-    if 'zip' in ct:
-        # ZIP response: results CSV is inside, filename has .zip extension
-        fname = fname[:-4] + '.csv' if fname.endswith('.zip') else fname
-        with zipfile.ZipFile(_io.BytesIO(raw)) as zf:
-            for name in zf.namelist():
-                if name.endswith('.csv') and 'series_template' not in name:
-                    body = zf.read(name).decode('utf-8')
-                    break
-            else:
-                body = zf.read(zf.namelist()[0]).decode('utf-8')
-    else:
-        body = raw.decode('utf-8')
+    assert fname.endswith('.csv'), fname
+    body = resp.get_data().decode('utf-8')
     race_cell = body.splitlines()[1].split(',')[6]
     return fname, race_cell, body
 
@@ -188,6 +178,15 @@ assert race_cell == 'Race 1', race_cell
 row = body.splitlines()[1].split(',')
 assert row[5] == '', 'Series column should be empty without a calendar event'
 print(f'no calendar event      -> {fname} | Race column: {race_cell} (Series empty, as before)')
+
+# The series template is its own CSV download now (no ZIP pairing)
+resp = client.get(f'/api/export-series-template?race_id={week_race}')
+assert resp.status_code == 200, resp.get_data(as_text=True)
+assert 'zip' not in resp.headers.get('Content-Type', '')
+assert 'RaceNo' in resp.get_data(as_text=True), 'template must carry Sailwave RaceNo column'
+resp = client.get(f'/api/export-series-template?race_id={no_event_race}')
+assert resp.status_code == 404, 'no series on a non-calendar date -> 404, results CSV only'
+print('series template is a separate plain-CSV download (404 when no series)')
 
 # Dell scenario: no calendar in the Sailwave folder -> app-folder fallback
 # (the calendar ships with the app now)
